@@ -1,4 +1,4 @@
-const CACHE = "hjemme-v3";
+const CACHE = "hjemme-v4";
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,7 +8,10 @@ const ASSETS = [
   "./js/sync.js",
   "./js/app.js",
   "./manifest.json",
-  "./favicon.svg"
+  "./favicon.svg",
+  "./apple-touch-icon.png",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {
