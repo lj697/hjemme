@@ -9,6 +9,7 @@ let calMode = "days";
 let boughtOpen = false;
 let paperPeekId = null;
 let keepShopFocus = false;
+let editId = null;
 let setupPanel = "start";
 let showShareCode = false;
 let setupBusy = false;
@@ -41,9 +42,11 @@ function isTyping() {
 function applyCloudData(data) {
   const memberId = state.currentMemberId;
   const photos = state.listPhotos || [];
+  const notes = Array.isArray(data.notes) ? data.notes : state.notes || [];
   state = migrate({
     ...data,
     listPhotos: photos,
+    notes,
     currentMemberId: memberId,
     householdId: data.householdId || state.householdId,
     setupDone: true
@@ -87,49 +90,14 @@ function avatar(member, size = "") {
   return `<span class="avatar ${size}" style="background:${member.color}">${escapeHtml(initials(member.name))}</span>`;
 }
 
-function eventAssigneeIds(event) {
-  if (Array.isArray(event.assigneeIds) && event.assigneeIds.length) return event.assigneeIds;
-  if (event.assigneeId) return [event.assigneeId];
-  return [];
-}
-
-function eventPeople(event) {
-  return eventAssigneeIds(event).map(memberById).filter(Boolean);
-}
-
-function eventPeopleLabel(event) {
-  return eventPeople(event)
-    .map((p) => p.name)
-    .join(", ");
-}
-
-function avatarStack(event) {
-  const people = eventPeople(event);
-  if (!people.length) return `<span class="avatar avatar-empty sm">?</span>`;
-  return `<span class="avatars">${people.map((p) => avatar(p, "sm")).join("")}</span>`;
-}
-
-function eventForPerson(event, memberId) {
-  if (!memberId) return true;
-  const ids = eventAssigneeIds(event);
-  if (!ids.length) return true;
-  return ids.includes(memberId);
-}
-
 function dayMarkerDots(iso) {
   const events = eventsOn(state, iso);
   if (!events.length) return "";
-  const involved = new Set();
-  let unassigned = false;
-  for (const event of events) {
-    const ids = eventAssigneeIds(event);
-    if (!ids.length) unassigned = true;
-    ids.forEach((id) => involved.add(id));
-  }
-  const dots = state.members
-    .filter((m) => involved.has(m.id))
-    .map((m) => `<span class="cal-dot" style="background:${m.color}"></span>`);
-  if (unassigned) dots.push('<span class="cal-dot empty"></span>');
+  const hasEvent = events.some((e) => e.kind !== "marker");
+  const hasMarker = events.some((e) => e.kind === "marker");
+  const dots = [];
+  if (hasEvent) dots.push('<span class="cal-dot" style="background:var(--clay)"></span>');
+  if (hasMarker) dots.push('<span class="cal-dot empty"></span>');
   return `<span class="cal-dots">${dots.join("")}</span>`;
 }
 
@@ -177,11 +145,6 @@ function render() {
     bindShareCode();
     return;
   }
-  if (!memberById(state.currentMemberId) && state.members.length) {
-    app.innerHTML = renderPickMe();
-    bindPickMe();
-    return;
-  }
   app.innerHTML = `
     <div class="shell">
       ${renderHeader()}
@@ -203,7 +166,7 @@ function renderSetup() {
     <section class="setup">
       <p class="eyebrow">Husstand</p>
       <h1>Hjemme</h1>
-      <p class="lede">Indkøb, pligter og en fælles kalender I begge kan bruge.</p>
+      <p class="lede">Indkøb, pligter, kalender og noter, I alle kan bruge.</p>
       <div class="setup-actions">
         <button type="button" class="btn btn-primary" id="go-create">Opret husstand</button>
         <button type="button" class="btn" id="go-join">Tilslut med kode</button>
@@ -236,7 +199,7 @@ function renderCreate() {
     <section class="setup">
       <p class="eyebrow">Ny husstand</p>
       <h1>Hvem bor her?</h1>
-      <p class="lede">Tilføj jer selv, så I kan fordele indkøb og pligter.</p>
+      <p class="lede">Tilføj jer selv, så husstanden er på plads.</p>
       <label>
         Husstandens navn
         <input id="house-name" value="${escapeHtml(state.householdName === "Hjemme" ? "" : state.householdName)}" placeholder="fx Familien">
@@ -313,24 +276,6 @@ function renderShareCode() {
       </div>
       <p class="hint">Papirfotos af indkøbslister bliver på den telefon, der tager billedet. Alt andet deles.</p>
       <button type="button" class="btn btn-primary" id="continue-share">Fortsæt</button>
-    </section>
-  `;
-}
-
-function renderPickMe() {
-  return `
-    <section class="setup">
-      <p class="eyebrow">${escapeHtml(state.householdName)}</p>
-      <h1>Hvem er du?</h1>
-      <p class="lede">Valget gemmes kun på denne telefon.</p>
-      <div class="setup-actions">
-        ${state.members
-          .map(
-            (m) =>
-              `<button type="button" class="btn" data-pick-me="${m.id}">${avatar(m)} ${escapeHtml(m.name)}</button>`
-          )
-          .join("")}
-      </div>
     </section>
   `;
 }
@@ -445,16 +390,6 @@ function bindShareCode() {
   });
 }
 
-function bindPickMe() {
-  app.querySelectorAll("[data-pick-me]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.currentMemberId = btn.dataset.pickMe;
-      persist();
-      render();
-    });
-  });
-}
-
 async function copyHouseholdCode() {
   const code = state.householdId;
   if (!code) return;
@@ -484,13 +419,6 @@ function addSetupMember() {
 }
 
 function renderHeader() {
-  const current = me();
-  const options = state.members
-    .map(
-      (m) =>
-        `<option value="${m.id}" ${m.id === current?.id ? "selected" : ""}>${escapeHtml(m.name)}</option>`
-    )
-    .join("");
   return `
     <header class="top">
       <div>
@@ -498,10 +426,6 @@ function renderHeader() {
         <h1>${escapeHtml(state.householdName)}</h1>
         ${syncLine()}
       </div>
-      <label class="who">
-        <span>Jeg er</span>
-        <select id="who-am-i">${options}</select>
-      </label>
     </header>
   `;
 }
@@ -522,12 +446,13 @@ function syncLine() {
 function renderNav() {
   const shop = openCount(state.shopping, (i) => !i.done);
   const chores = openCount(state.chores, (c) => !choreIsDone(c));
-  const todayMine = eventsOn(state, todayIso()).filter((e) => eventForPerson(e, me()?.id)).length;
+  const todayCount = eventsOn(state, todayIso()).filter((e) => e.kind !== "marker").length;
   const items = [
     ["home", "Hjem", null],
     ["shop", "Indkøb", shop],
     ["chores", "Pligter", chores],
-    ["cal", "Kalender", todayMine || null]
+    ["cal", "Kalender", todayCount || null],
+    ["notes", "Noter", (state.notes || []).length || null]
   ];
   return `
     <nav class="tabbar">
@@ -553,6 +478,8 @@ function renderView() {
       return renderChores();
     case "cal":
       return renderCalendar();
+    case "notes":
+      return renderNotes();
     default:
       return renderHome();
   }
@@ -560,33 +487,27 @@ function renderView() {
 
 function renderHome() {
   const today = todayIso();
-  const current = me();
-  const todaysEvents = eventsOn(state, today).filter((e) => e.kind !== "marker" && eventForPerson(e, current?.id));
+  const todaysEvents = eventsOn(state, today).filter((e) => e.kind !== "marker");
   const choreLeft = state.chores.filter((c) => !choreIsDone(c));
   const shopLeft = state.shopping.filter((i) => !i.done);
-  const upcoming = todaysEvents.length
-    ? []
-    : nextEvents(state, addDays(today, 1), 5).filter((e) => eventForPerson(e, current?.id)).slice(0, 2);
+  const upcoming = todaysEvents.length ? [] : nextEvents(state, addDays(today, 1), 2);
   const upcomingMarkersList = upcomingMarkers(state);
-  const who = current?.name || "dig";
 
   return `
     <section class="stack">
       <div class="hero-card" data-view="cal" data-jump-today="1" role="link">
-        <p class="eyebrow">${escapeHtml(who)} · ${escapeHtml(formatDayHeading(today))}</p>
+        <p class="eyebrow">${escapeHtml(formatDayHeading(today))}</p>
         ${
           todaysEvents.length
             ? `<ul class="today-list">${todaysEvents.map(homeEventLine).join("")}</ul>`
-            : `<h2>Ingen aftaler for ${escapeHtml(who)} i dag</h2>`
+            : `<h2>Ingen aftaler i dag</h2>`
         }
         ${
           upcoming.length
             ? `<p class="hint">Næste: ${upcoming
                 .map((e) => `${escapeHtml(e.title)} · ${escapeHtml(formatEventWhen(e))}`)
                 .join(" · ")}</p>`
-            : todaysEvents.length
-              ? `<p class="hint">Åbn kalenderen for hele husstanden</p>`
-              : `<p class="hint">Skift person øverst, eller tilføj en aftale</p>`
+            : `<p class="hint">Åbn kalenderen for at se mere</p>`
         }
       </div>
       <div class="grid">
@@ -603,20 +524,17 @@ function renderHome() {
       </div>
       ${
         choreLeft.length
-          ? `<div class="list-card static">
+          ? `<div class="list-card" data-view="chores" role="link">
               <div>
                 <p class="eyebrow">I dag derhjemme</p>
                 <ul class="plain">${choreLeft
-                  .map(
-                    (c) =>
-                      `<li>${escapeHtml(c.text)} · ${escapeHtml(memberById(c.assigneeId)?.name || "")}</li>`
-                  )
+                  .map((c) => `<li>${escapeHtml(c.text)}</li>`)
                   .join("")}</ul>
               </div>
             </div>`
           : ""
       }
-      <div class="list-card ${upcomingMarkersList.length ? "" : "static"}" ${upcomingMarkersList.length ? 'data-view="cal"' : ""}>
+      <div class="list-card ${upcomingMarkersList.length ? "" : "static"}" ${upcomingMarkersList.length ? 'data-view="cal" role="link"' : ""}>
         <div>
           <p class="eyebrow">Mærkedage</p>
           ${
@@ -627,7 +545,6 @@ function renderHome() {
                 <li>
                   <span>
                     <strong>${escapeHtml(event.title)}</strong>
-                    ${eventPeopleLabel(event) ? `<em>${escapeHtml(eventPeopleLabel(event))}</em>` : ""}
                   </span>
                   <span class="hint">${escapeHtml(formatMarkerDate(when))} · ${escapeHtml(formatAhead(when))}</span>
                 </li>`
@@ -643,11 +560,10 @@ function renderHome() {
 }
 
 function homeEventLine(event) {
-  const names = eventPeopleLabel(event);
   return `
     <li>
       <strong>${event.time || "Hele dagen"}</strong>
-      <span>${escapeHtml(event.title)}${names ? ` · ${escapeHtml(names)}` : ""}</span>
+      <span>${escapeHtml(event.title)}</span>
     </li>
   `;
 }
@@ -717,8 +633,8 @@ function shopRow(item) {
       <label class="shop-check">
         <input type="checkbox" data-toggle-shop="${item.id}" ${item.done ? "checked" : ""}>
         <span class="box"></span>
-        <span class="name">${escapeHtml(item.text)}</span>
       </label>
+      <button type="button" class="name" data-edit-shop="${item.id}">${escapeHtml(item.text)}</button>
       <button type="button" class="item-x" data-delete-shop="${item.id}" aria-label="Fjern">×</button>
     </li>
   `;
@@ -744,18 +660,18 @@ function cadenceLabel(cadence) {
 }
 
 function choreRow(chore) {
-  const person = memberById(chore.assigneeId);
   const done = choreIsDone(chore);
   return `
     <li class="row ${done ? "done" : ""}">
       <label class="check">
         <input type="checkbox" data-toggle-chore="${chore.id}" ${done ? "checked" : ""}>
+      </label>
+      <button type="button" class="row-edit" data-edit-chore="${chore.id}">
         <span>
           ${escapeHtml(chore.text)}
           <small>${cadenceLabel(chore.cadence)}</small>
         </span>
-      </label>
-      ${avatar(person, "sm")}
+      </button>
     </li>
   `;
 }
@@ -816,13 +732,13 @@ function weekDayBlock(iso) {
 }
 
 function weekEventLine(event) {
-  const names = eventPeopleLabel(event);
   const when = event.kind === "marker" ? "Mærkedag" : event.time || "Hele dagen";
   return `
     <li class="week-event ${event.kind === "marker" ? "marker" : ""}">
-      <strong>${when}</strong>
-      <span>${escapeHtml(event.title)}${names ? ` · ${escapeHtml(names)}` : ""}</span>
-      ${avatarStack(event)}
+      <button type="button" class="week-event-main" data-edit-event="${event.id}">
+        <strong>${when}</strong>
+        <span>${escapeHtml(event.title)}</span>
+      </button>
       <button type="button" class="item-x" data-delete-event="${event.id}" aria-label="Fjern">×</button>
     </li>
   `;
@@ -869,18 +785,14 @@ function renderMonthCal() {
 }
 
 function eventCard(event) {
-  const names = eventPeopleLabel(event);
   return `
     <li class="pickup">
-      <div class="pickup-top">
-        <div>
-          <h3>${escapeHtml(event.title)}</h3>
-          <p class="hint">${event.kind === "marker" ? "Mærkedag" : event.time || "Hele dagen"}</p>
-        </div>
-        ${avatarStack(event)}
-      </div>
-      <p class="hint">${names || "Ingen tilknyttet"}</p>
+      <button type="button" class="event-edit" data-edit-event="${event.id}">
+        <h3>${escapeHtml(event.title)}</h3>
+        <p class="hint">${event.kind === "marker" ? "Mærkedag" : event.time || "Hele dagen"}</p>
+      </button>
       <div class="actions">
+        <button type="button" class="text-btn" data-edit-event="${event.id}">Rediger</button>
         <button type="button" class="text-btn danger" data-delete-event="${event.id}">Fjern</button>
       </div>
     </li>
@@ -891,34 +803,52 @@ function empty(text) {
   return `<li class="empty">${escapeHtml(text)}</li>`;
 }
 
-function memberSelect(name, selected = "", emptyLabel = "Vælg") {
-  const options = state.members
-    .map((m) => `<option value="${m.id}" ${m.id === selected ? "selected" : ""}>${escapeHtml(m.name)}</option>`)
-    .join("");
-  return `<select name="${name}"><option value="">${emptyLabel}</option>${options}</select>`;
+function formatNoteWhen(ts) {
+  if (!ts) return "";
+  return new Intl.DateTimeFormat("da-DK", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(ts));
 }
 
-function memberChecks(selectedIds) {
+function renderNotes() {
+  const notes = [...(state.notes || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   return `
-    <div class="who-picks">
-      ${state.members
-        .map(
-          (m) => `
-        <label class="who-chip" style="--who:${m.color}">
-          <input type="checkbox" name="who" value="${m.id}" ${selectedIds.includes(m.id) ? "checked" : ""}>
-          ${avatar(m)}
-          <span class="who-label">${escapeHtml(m.name)}</span>
-        </label>`
-        )
-        .join("")}
-    </div>`;
+    <section class="stack">
+      <div class="section-head">
+        <h2>Noter</h2>
+        <button type="button" class="btn" data-sheet="note">Ny note</button>
+      </div>
+      <ul class="cards">
+        ${
+          notes
+            .map(
+              (note) => `
+          <li>
+            <button type="button" class="note-card" data-edit-note="${note.id}">
+              <h3>${escapeHtml(note.title || "Uden titel")}</h3>
+              ${note.body ? `<p class="note-preview">${escapeHtml(note.body)}</p>` : ""}
+              <p class="hint">${escapeHtml(formatNoteWhen(note.updatedAt))}</p>
+            </button>
+          </li>`
+            )
+            .join("") || empty("Ingen noter endnu. Skriv den første.")
+        }
+      </ul>
+    </section>
+  `;
 }
 
 function renderSheet() {
+  const editing = Boolean(editId);
   const title = {
-    chore: "Ny pligt",
-    event: "Ny aftale",
-    marker: "Ny mærkedag",
+    chore: editing ? "Rediger pligt" : "Ny pligt",
+    event: editing ? "Rediger aftale" : "Ny aftale",
+    marker: editing ? "Rediger mærkedag" : "Ny mærkedag",
+    note: editing ? "Rediger note" : "Ny note",
+    shop: "Rediger vare",
     settings: "Husstand",
     photo: "Skrevet liste",
     suggest: "Hurtige varer",
@@ -987,43 +917,71 @@ function sheetMarkup() {
     `;
   }
   if (sheet === "chore") {
+    const chore = state.chores.find((c) => c.id === editId);
+    const cadence = chore?.cadence || "weekly";
     return `
       <form class="form" id="chore-form">
-        <label>Hvad <input name="text" required placeholder="fx Tøm skrald"></label>
-        <label>Hvem ${memberSelect("assigneeId", me()?.id || "", "Vælg person")}</label>
+        <label>Hvad <input name="text" required placeholder="fx Tøm skrald" value="${escapeHtml(chore?.text || "")}"></label>
         <label>Hvor ofte
           <select name="cadence">
-            <option value="once">Én gang</option>
-            <option value="daily">Hver dag</option>
-            <option value="weekly" selected>Hver uge</option>
-            <option value="monthly">Hver måned</option>
+            <option value="once" ${cadence === "once" ? "selected" : ""}>Én gang</option>
+            <option value="daily" ${cadence === "daily" ? "selected" : ""}>Hver dag</option>
+            <option value="weekly" ${cadence === "weekly" ? "selected" : ""}>Hver uge</option>
+            <option value="monthly" ${cadence === "monthly" ? "selected" : ""}>Hver måned</option>
           </select>
         </label>
-        <button type="submit" class="btn btn-primary">Gem pligt</button>
+        <button type="submit" class="btn btn-primary">${chore ? "Gem ændringer" : "Gem pligt"}</button>
+        ${chore ? `<button type="button" class="text-btn danger" id="delete-editing">Slet pligt</button>` : ""}
+      </form>
+    `;
+  }
+  if (sheet === "shop") {
+    const item = state.shopping.find((s) => s.id === editId);
+    if (!item) return `<p class="hint">Varen findes ikke.</p>`;
+    return `
+      <form class="form" id="shop-edit-form">
+        <label>Vare <input name="text" required value="${escapeHtml(item.text)}"></label>
+        <button type="submit" class="btn btn-primary">Gem ændringer</button>
+        <button type="button" class="text-btn danger" id="delete-editing">Slet vare</button>
+      </form>
+    `;
+  }
+  if (sheet === "note") {
+    const note = (state.notes || []).find((n) => n.id === editId);
+    return `
+      <form class="form" id="note-form">
+        <label>Overskrift <input name="title" required placeholder="fx Kode til cykelskur" value="${escapeHtml(note?.title || "")}"></label>
+        <label>Note <textarea name="body" rows="8" placeholder="Skriv her…">${escapeHtml(note?.body || "")}</textarea></label>
+        <button type="submit" class="btn btn-primary">${note ? "Gem ændringer" : "Gem note"}</button>
+        ${note ? `<button type="button" class="text-btn danger" id="delete-editing">Slet note</button>` : ""}
       </form>
     `;
   }
   if (sheet === "event" || sheet === "marker") {
     const marker = sheet === "marker";
+    const event = state.events.find((e) => e.id === editId);
+    const dateValue = event?.date || selectedDay;
+    const timeValue = event?.time || "16:00";
+    const allDay = event ? !event.time : false;
+    const yearly = event ? event.yearly !== false : true;
     return `
       <form class="form" id="event-form">
-        <label>${marker ? "Hvad" : "Hvad"} <input name="title" required placeholder="${marker ? "fx Mias fødselsdag" : "fx Hent Noah"}"></label>
-        <label>Dato <input name="date" type="date" value="${selectedDay}" required></label>
+        <label>Hvad <input name="title" required placeholder="${marker ? "fx Mias fødselsdag" : "fx Hent Noah"}" value="${escapeHtml(event?.title || "")}"></label>
+        <label>Dato <input name="date" type="date" value="${dateValue}" required></label>
         ${
           marker
             ? `<label class="tick inline">
-                <input type="checkbox" name="yearly" checked>
+                <input type="checkbox" name="yearly" ${yearly ? "checked" : ""}>
                 Gentages hvert år
               </label>`
-            : `<label>Tid <input name="time" type="time" value="16:00"></label>
+            : `<label>Tid <input name="time" type="time" value="${timeValue}"></label>
         <label class="tick inline">
-          <input type="checkbox" name="allDay">
+          <input type="checkbox" name="allDay" ${allDay ? "checked" : ""}>
           Hele dagen
         </label>`
         }
-        <p class="eyebrow">Hvem</p>
-        ${memberChecks(me()?.id ? [me().id] : [])}
-        <button type="submit" class="btn btn-primary">${marker ? "Gem mærkedag" : "Gem aftale"}</button>
+        <button type="submit" class="btn btn-primary">${event ? "Gem ændringer" : marker ? "Gem mærkedag" : "Gem aftale"}</button>
+        ${event ? `<button type="button" class="text-btn danger" id="delete-editing">Slet</button>` : ""}
       </form>
     `;
   }
@@ -1074,18 +1032,13 @@ function renderShareSettings() {
     `;
   }
   return `
-    <p class="hint">Del indkøb, pligter og kalender med den anden telefon.</p>
+    <p class="hint">Del indkøb, pligter, kalender og noter med den anden telefon.</p>
     <button type="button" class="btn" id="share-house" ${!HjemmeSync.isReady() || setupBusy ? "disabled" : ""}>Opret fælles husstand</button>
     ${status.kind === "error" ? `<p class="sync-line warn">${escapeHtml(status.message)}</p>` : ""}
   `;
 }
 
 function bindMain() {
-  document.getElementById("who-am-i")?.addEventListener("change", (e) => {
-    state.currentMemberId = e.target.value;
-    persist();
-    render();
-  });
   app.querySelectorAll("[data-view]").forEach((el) => {
     el.addEventListener("click", () => {
       view = el.dataset.view;
@@ -1096,11 +1049,13 @@ function bindMain() {
         calMonth = now.getMonth();
       }
       sheet = null;
+      editId = null;
       render();
     });
   });
   document.getElementById("open-settings")?.addEventListener("click", () => {
     sheet = "settings";
+    editId = null;
     render();
   });
   document.getElementById("close-sheet")?.addEventListener("click", closeSheet);
@@ -1110,9 +1065,63 @@ function bindMain() {
   app.querySelectorAll("[data-sheet]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const next = btn.dataset.sheet;
-      sheet = sheet === next ? null : next;
+      const wasEditing = Boolean(editId);
+      if (sheet === next && !wasEditing) {
+        sheet = null;
+      } else {
+        sheet = next;
+      }
+      editId = null;
       render();
     });
+  });
+  app.querySelectorAll("[data-edit-shop]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      editId = btn.dataset.editShop;
+      sheet = "shop";
+      render();
+    });
+  });
+  app.querySelectorAll("[data-edit-chore]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      editId = btn.dataset.editChore;
+      sheet = "chore";
+      render();
+    });
+  });
+  app.querySelectorAll("[data-edit-event]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const event = state.events.find((ev) => ev.id === btn.dataset.editEvent);
+      if (!event) return;
+      editId = event.id;
+      sheet = event.kind === "marker" ? "marker" : "event";
+      selectedDay = event.date;
+      render();
+    });
+  });
+  app.querySelectorAll("[data-edit-note]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      editId = btn.dataset.editNote;
+      sheet = "note";
+      render();
+    });
+  });
+  document.getElementById("delete-editing")?.addEventListener("click", () => {
+    if (!editId) return;
+    if (sheet === "chore") state.chores = state.chores.filter((c) => c.id !== editId);
+    else if (sheet === "shop") state.shopping = state.shopping.filter((s) => s.id !== editId);
+    else if (sheet === "note") state.notes = (state.notes || []).filter((n) => n.id !== editId);
+    else if (sheet === "event" || sheet === "marker") {
+      state.events = state.events.filter((ev) => ev.id !== editId);
+    }
+    editId = null;
+    sheet = null;
+    persist();
+    render();
   });
 
   document.getElementById("shop-form")?.addEventListener("submit", (e) => {
@@ -1239,15 +1248,62 @@ function bindMain() {
     e.preventDefault();
     const data = new FormData(e.target);
     const text = String(data.get("text") || "").trim();
-    const assigneeId = String(data.get("assigneeId") || "");
-    if (!text || !assigneeId) return;
-    state.chores.unshift({
-      id: uid(),
-      text,
-      assigneeId,
-      cadence: String(data.get("cadence") || "weekly"),
-      doneOn: null
-    });
+    const cadence = String(data.get("cadence") || "weekly");
+    if (!text) return;
+    if (editId) {
+      const chore = state.chores.find((c) => c.id === editId);
+      if (chore) {
+        chore.text = text;
+        chore.cadence = cadence;
+      }
+    } else {
+      state.chores.unshift({
+        id: uid(),
+        text,
+        assigneeId: null,
+        cadence,
+        doneOn: null
+      });
+    }
+    editId = null;
+    sheet = null;
+    persist();
+    render();
+  });
+  document.getElementById("shop-edit-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = String(new FormData(e.target).get("text") || "").trim();
+    if (!text) return;
+    const item = state.shopping.find((s) => s.id === editId);
+    if (item) item.text = text;
+    editId = null;
+    sheet = null;
+    persist();
+    render();
+  });
+  document.getElementById("note-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const data = new FormData(e.target);
+    const title = String(data.get("title") || "").trim();
+    const body = String(data.get("body") || "").trim();
+    if (!title) return;
+    if (!Array.isArray(state.notes)) state.notes = [];
+    if (editId) {
+      const note = state.notes.find((n) => n.id === editId);
+      if (note) {
+        note.title = title;
+        note.body = body;
+        note.updatedAt = Date.now();
+      }
+    } else {
+      state.notes.unshift({
+        id: uid(),
+        title,
+        body,
+        updatedAt: Date.now()
+      });
+    }
+    editId = null;
     sheet = null;
     persist();
     render();
@@ -1285,6 +1341,7 @@ function bindMain() {
       const d = parseIsoDate(selectedDay);
       calYear = d.getFullYear();
       calMonth = d.getMonth();
+      editId = null;
       sheet = "event";
       render();
     });
@@ -1308,20 +1365,31 @@ function bindMain() {
     const allDay = Boolean(data.get("allDay")) || kind === "marker";
     const time = allDay ? null : String(data.get("time") || "") || null;
     if (!title || !date) return;
-    const assigneeIds = [...e.target.querySelectorAll('input[name="who"]:checked')].map((i) => i.value);
-    state.events.push({
-      id: uid(),
-      title,
-      date,
-      time,
-      assigneeIds,
-      kind,
-      yearly
-    });
+    if (editId) {
+      const event = state.events.find((ev) => ev.id === editId);
+      if (event) {
+        event.title = title;
+        event.date = date;
+        event.time = time;
+        event.kind = kind;
+        event.yearly = yearly;
+      }
+    } else {
+      state.events.push({
+        id: uid(),
+        title,
+        date,
+        time,
+        assigneeIds: [],
+        kind,
+        yearly
+      });
+    }
     selectedDay = date;
     const d = parseIsoDate(date);
     calYear = d.getFullYear();
     calMonth = d.getMonth();
+    editId = null;
     sheet = null;
     persist();
     render();
@@ -1380,6 +1448,7 @@ function bindMain() {
     state = demoState();
     persist();
     sheet = null;
+    editId = null;
     view = "home";
     selectedDay = todayIso();
     render();
@@ -1398,6 +1467,7 @@ function bindMain() {
 function closeSheet() {
   sheet = null;
   photoId = null;
+  editId = null;
   render();
 }
 

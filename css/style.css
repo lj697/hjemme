@@ -127,13 +127,68 @@ select {
 }
 
 .hero-card,
-.list-card,
-.pickup {
+.list-card {
   width: 100%;
   text-align: left;
   border-radius: var(--radius);
   padding: 18px;
   cursor: pointer;
+}
+
+.pickup {
+  width: 100%;
+  text-align: left;
+  border-radius: var(--radius);
+  padding: 18px;
+  cursor: default;
+}
+
+.event-edit {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.note-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid rgba(42, 33, 28, 0.06);
+  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+  padding: 18px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.note-card h3 {
+  margin: 0;
+}
+
+.note-preview {
+  margin: 4px 0 0;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.form textarea {
+  min-height: 10rem;
+  resize: vertical;
+  line-height: 1.45;
 }
 
 .hero-card h2 {
@@ -286,8 +341,28 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 0 0 auto;
+}
+
+.row-edit {
   flex: 1;
   min-width: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.row-edit span {
+  display: grid;
+}
+
+.row-edit small {
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .check span {
@@ -326,6 +401,7 @@ select {
 .composer input,
 .form input,
 .form select,
+.form textarea,
 .add-row input,
 .setup input {
   width: 100%;
@@ -409,7 +485,7 @@ select {
   transform: translateX(-50%);
   width: min(430px, 100%);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   background: rgba(255, 252, 247, 0.94);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
@@ -458,6 +534,7 @@ select {
 .tab-icon[data-icon="shop"] { mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M7 4h14l-1.5 9h-12zM7 4 5 2H2v2h2l3 13h12v-2H8.4M9 20a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm8 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z'/></svg>"); }
 .tab-icon[data-icon="chores"] { mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M9 11 11.5 14 20 5.5 18.5 4 11.5 11 9 8.5 7.5 10zM5 20V4h9v2H7v12h10v-5h2v7z'/></svg>"); }
 .tab-icon[data-icon="cal"] { mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M7 2h2v2h6V2h2v2h3v16H4V4h3zm12 6H5v10h14z'/></svg>"); }
+.tab-icon[data-icon="notes"] { mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M6 3h9l5 5v13H6zm8 1.5V9h4.5z'/></svg>"); }
 
 .main:has(.shop) {
   padding: 4px 0 24px;
@@ -523,8 +600,7 @@ select {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 auto;
   min-height: 58px;
   cursor: pointer;
 }
@@ -550,9 +626,17 @@ select {
   box-shadow: inset 0 0 0 5px var(--moss), inset 0 0 0 7px #fff;
 }
 
-.shop-check .name {
+.shop-item > .name {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  text-align: left;
   font-size: 1.12rem;
   font-weight: 800;
+  padding: 8px 4px;
+  cursor: pointer;
+  color: inherit;
 }
 
 .item-x {
@@ -828,12 +912,26 @@ select {
 
 .week-event {
   display: grid;
-  grid-template-columns: 5.6rem 1fr auto auto;
+  grid-template-columns: 1fr auto;
   gap: 8px;
   align-items: center;
   padding: 8px 4px 8px 8px;
   border-radius: 12px;
   background: var(--paper);
+}
+
+.week-event-main {
+  display: grid;
+  grid-template-columns: 5.6rem 1fr;
+  gap: 8px;
+  align-items: center;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  color: inherit;
+  font: inherit;
 }
 
 .week-event strong {

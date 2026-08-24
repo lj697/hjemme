@@ -74,6 +74,9 @@ function demoState() {
       { id: uid(), title: "Noahs fødselsdag", date: addDays(today, 42), time: null, assigneeIds: [noah], kind: "marker", yearly: true },
       { id: uid(), title: "Bryllupsdag", date: addDays(today, 88), time: null, assigneeIds: [lars, mia], kind: "marker", yearly: true },
       { id: uid(), title: "Mias fødselsdag", date: addDays(today, 150), time: null, assigneeIds: [mia], kind: "marker", yearly: true }
+    ],
+    notes: [
+      { id: uid(), title: "Kode til cykelskur", body: "1234. Hænger hos naboen, hvis vi glemmer den.", updatedAt: now }
     ]
   };
 }
@@ -89,7 +92,8 @@ function emptyState() {
     shopping: [],
     listPhotos: [],
     chores: [],
-    events: []
+    events: [],
+    notes: []
   };
 }
 
@@ -98,6 +102,7 @@ function migrate(raw) {
   if (!Array.isArray(next.suggestions)) next.suggestions = [];
   if (!Array.isArray(next.listPhotos)) next.listPhotos = [];
   if (!Array.isArray(next.events)) next.events = [];
+  if (!Array.isArray(next.notes)) next.notes = [];
   if (Array.isArray(raw.pickups) && !raw.events?.length) {
     next.events = raw.pickups
       .filter((p) => p.status !== "done")
