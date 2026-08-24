@@ -16,6 +16,9 @@ let setupBusy = false;
 let setupError = "";
 let copiedCode = false;
 let joinCodeDraft = "";
+let mealWeek = mondayOf(todayIso());
+let mealQuery = "";
+let keepMealSearch = false;
 
 const app = document.getElementById("app");
 
@@ -43,10 +46,12 @@ function applyCloudData(data) {
   const memberId = state.currentMemberId;
   const photos = state.listPhotos || [];
   const notes = Array.isArray(data.notes) ? data.notes : state.notes || [];
+  const meals = Array.isArray(data.meals) ? data.meals : state.meals || [];
   state = migrate({
     ...data,
     listPhotos: photos,
     notes,
+    meals,
     currentMemberId: memberId,
     householdId: data.householdId || state.householdId,
     setupDone: true
@@ -166,7 +171,7 @@ function renderSetup() {
     <section class="setup">
       <p class="eyebrow">Husstand</p>
       <h1>Hjemme</h1>
-      <p class="lede">Indkøb, pligter, kalender og noter, I alle kan bruge.</p>
+      <p class="lede">Indkøb, pligter, kalender, noter og madplan, I alle kan bruge.</p>
       <div class="setup-actions">
         <button type="button" class="btn btn-primary" id="go-create">Opret husstand</button>
         <button type="button" class="btn" id="go-join">Tilslut med kode</button>
@@ -452,6 +457,7 @@ function renderNav() {
     ["shop", "Indkøb", shop],
     ["chores", "Pligter", chores],
     ["cal", "Kalender", todayCount || null],
+    ["meals", "Madplan", null],
     ["notes", "Noter", (state.notes || []).length || null]
   ];
   return `
@@ -478,6 +484,8 @@ function renderView() {
       return renderChores();
     case "cal":
       return renderCalendar();
+    case "meals":
+      return renderMeals();
     case "notes":
       return renderNotes();
     default:
@@ -492,6 +500,7 @@ function renderHome() {
   const shopLeft = state.shopping.filter((i) => !i.done);
   const upcoming = todaysEvents.length ? [] : nextEvents(state, addDays(today, 1), 2);
   const upcomingMarkersList = upcomingMarkers(state);
+  const tonight = mealOn(state, today);
 
   return `
     <section class="stack">
@@ -509,6 +518,13 @@ function renderHome() {
                 .join(" · ")}</p>`
             : `<p class="hint">Åbn kalenderen for at se mere</p>`
         }
+      </div>
+      <div class="list-card" data-view="meals" data-jump-week="1" role="link">
+        <div>
+          <p class="eyebrow">I aften</p>
+          ${tonight ? `<h2>${escapeHtml(tonight.dish)}</h2>` : `<h2>Ingen ret i dag</h2>`}
+          <p class="hint">${tonight ? "Åbn madplanen for at se ugen" : "Skriv ugens madplan"}</p>
+        </div>
       </div>
       <div class="grid">
         <button type="button" class="mini-card" data-view="shop">
@@ -813,6 +829,84 @@ function formatNoteWhen(ts) {
   }).format(new Date(ts));
 }
 
+function renderMeals() {
+  const query = mealQuery.trim();
+  const hits = query ? searchMeals(state, query) : [];
+  const thisMonday = mondayOf(todayIso());
+  const days = weekDays(mealWeek);
+  return `
+    <section class="stack">
+      <div class="section-head">
+        <h2>Madplan</h2>
+      </div>
+      <label class="meal-search">
+        <span class="eyebrow">Find en ret</span>
+        <input id="meal-search" type="search" placeholder="fx frikadeller" value="${escapeHtml(mealQuery)}" autocomplete="off">
+      </label>
+      ${
+        query
+          ? `<ul class="cards">
+              ${
+                hits
+                  .map(
+                    (meal) => `
+                <li>
+                  <button type="button" class="note-card" data-meal-jump="${meal.date}">
+                    <h3>${escapeHtml(meal.dish)}</h3>
+                    <p class="hint">${escapeHtml(formatDayHeading(meal.date))}</p>
+                  </button>
+                </li>`
+                  )
+                  .join("") || empty("Ingen retter matcher søgningen.")
+              }
+            </ul>`
+          : `
+      <div class="cal-nav">
+        <button type="button" class="icon-btn" id="meal-prev" aria-label="Forrige uge">‹</button>
+        <strong>${escapeHtml(formatMealWeekHeading(mealWeek))}</strong>
+        <button type="button" class="icon-btn" id="meal-next" aria-label="Næste uge">›</button>
+      </div>
+      ${
+        mealWeek !== thisMonday
+          ? `<button type="button" class="text-btn" id="meal-this-week">Gå til denne uge</button>`
+          : ""
+      }
+      <form class="meal-week" id="meal-week-form">
+        ${days
+          .map((iso) => {
+            const meal = mealOn(state, iso);
+            const today = iso === todayIso();
+            const weekdayRaw = new Intl.DateTimeFormat("da-DK", { weekday: "long" }).format(parseIsoDate(iso));
+            const weekday = weekdayRaw.charAt(0).toUpperCase() + weekdayRaw.slice(1);
+            const dateLabel = new Intl.DateTimeFormat("da-DK", { day: "numeric", month: "short" }).format(
+              parseIsoDate(iso)
+            );
+            return `
+              <label class="meal-day ${today ? "today" : ""}">
+                <span>
+                  <strong>${escapeHtml(weekday)}</strong>
+                  <small>${escapeHtml(dateLabel)}${today ? " · i dag" : ""}</small>
+                </span>
+                <input name="meal-${iso}" data-meal-date="${iso}" value="${escapeHtml(meal?.dish || "")}" placeholder="Ret" autocomplete="off">
+              </label>`;
+          })
+          .join("")}
+      </form>
+      <p class="hint">Planerne gemmes automatisk, så I kan bladre tilbage og se, hvad I har spist.</p>`
+      }
+    </section>
+  `;
+}
+
+function flushMealWeekForm() {
+  const form = document.getElementById("meal-week-form");
+  if (!form) return false;
+  form.querySelectorAll("[data-meal-date]").forEach((input) => {
+    upsertMeal(state, input.dataset.mealDate, input.value);
+  });
+  return true;
+}
+
 function renderNotes() {
   const notes = [...(state.notes || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   return `
@@ -1032,7 +1126,7 @@ function renderShareSettings() {
     `;
   }
   return `
-    <p class="hint">Del indkøb, pligter, kalender og noter med den anden telefon.</p>
+    <p class="hint">Del indkøb, pligter, kalender, noter og madplan med den anden telefon.</p>
     <button type="button" class="btn" id="share-house" ${!HjemmeSync.isReady() || setupBusy ? "disabled" : ""}>Opret fælles husstand</button>
     ${status.kind === "error" ? `<p class="sync-line warn">${escapeHtml(status.message)}</p>` : ""}
   `;
@@ -1041,12 +1135,17 @@ function renderShareSettings() {
 function bindMain() {
   app.querySelectorAll("[data-view]").forEach((el) => {
     el.addEventListener("click", () => {
+      if (flushMealWeekForm()) persist();
       view = el.dataset.view;
       if (el.dataset.jumpToday) {
         selectedDay = todayIso();
         const now = new Date();
         calYear = now.getFullYear();
         calMonth = now.getMonth();
+      }
+      if (el.dataset.jumpWeek || view === "meals") {
+        mealWeek = mondayOf(todayIso());
+        mealQuery = "";
       }
       sheet = null;
       editId = null;
@@ -1072,6 +1171,48 @@ function bindMain() {
         sheet = next;
       }
       editId = null;
+      render();
+    });
+  });
+  document.getElementById("meal-search")?.addEventListener("input", (e) => {
+    if (flushMealWeekForm()) persist();
+    mealQuery = e.target.value;
+    keepMealSearch = true;
+    render();
+  });
+  document.getElementById("meal-prev")?.addEventListener("click", () => {
+    flushMealWeekForm();
+    persist();
+    mealWeek = addDays(mealWeek, -7);
+    render();
+  });
+  document.getElementById("meal-next")?.addEventListener("click", () => {
+    flushMealWeekForm();
+    persist();
+    mealWeek = addDays(mealWeek, 7);
+    render();
+  });
+  document.getElementById("meal-this-week")?.addEventListener("click", () => {
+    flushMealWeekForm();
+    persist();
+    mealWeek = mondayOf(todayIso());
+    render();
+  });
+  app.querySelectorAll("[data-meal-date]").forEach((input) => {
+    input.addEventListener("change", () => {
+      upsertMeal(state, input.dataset.mealDate, input.value);
+      persist();
+    });
+  });
+  document.getElementById("meal-week-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    flushMealWeekForm();
+    persist();
+  });
+  app.querySelectorAll("[data-meal-jump]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      mealWeek = mondayOf(btn.dataset.mealJump);
+      mealQuery = "";
       render();
     });
   });
@@ -1461,6 +1602,15 @@ function bindMain() {
   if (keepShopFocus) {
     keepShopFocus = false;
     document.querySelector('#shop-form input[name="text"]')?.focus();
+  }
+  if (keepMealSearch) {
+    keepMealSearch = false;
+    const search = document.getElementById("meal-search");
+    if (search) {
+      search.focus();
+      const end = search.value.length;
+      search.setSelectionRange(end, end);
+    }
   }
 }
 

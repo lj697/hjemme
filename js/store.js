@@ -77,6 +77,11 @@ function demoState() {
     ],
     notes: [
       { id: uid(), title: "Kode til cykelskur", body: "1234. Hænger hos naboen, hvis vi glemmer den.", updatedAt: now }
+    ],
+    meals: [
+      { id: uid(), date: today, dish: "Frikadeller med kartofler" },
+      { id: uid(), date: addDays(today, 1), dish: "Pasta med kødsauce" },
+      { id: uid(), date: addDays(mondayOf(today), 4), dish: "Fiskefilet og rugbrød" }
     ]
   };
 }
@@ -93,7 +98,8 @@ function emptyState() {
     listPhotos: [],
     chores: [],
     events: [],
-    notes: []
+    notes: [],
+    meals: []
   };
 }
 
@@ -103,6 +109,7 @@ function migrate(raw) {
   if (!Array.isArray(next.listPhotos)) next.listPhotos = [];
   if (!Array.isArray(next.events)) next.events = [];
   if (!Array.isArray(next.notes)) next.notes = [];
+  if (!Array.isArray(next.meals)) next.meals = [];
   if (Array.isArray(raw.pickups) && !raw.events?.length) {
     next.events = raw.pickups
       .filter((p) => p.status !== "done")
@@ -336,6 +343,39 @@ function formatAhead(iso) {
   if (n < 60) return `om ${weeks} uger`;
   const months = Math.round(n / 30);
   return `om ${months} ${months === 1 ? "måned" : "måneder"}`;
+}
+
+function mealOn(state, iso) {
+  return (state.meals || []).find((m) => m.date === iso) || null;
+}
+
+function upsertMeal(state, date, dish) {
+  if (!Array.isArray(state.meals)) state.meals = [];
+  const text = String(dish || "").trim();
+  const existing = state.meals.find((m) => m.date === date);
+  if (!text) {
+    state.meals = state.meals.filter((m) => m.date !== date);
+    return;
+  }
+  if (existing) {
+    existing.dish = text;
+    return;
+  }
+  state.meals.push({ id: uid(), date, dish: text });
+}
+
+function searchMeals(state, query) {
+  const q = String(query || "")
+    .trim()
+    .toLowerCase();
+  if (!q) return [];
+  return (state.meals || [])
+    .filter((m) => m.dish.toLowerCase().includes(q))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function formatMealWeekHeading(iso) {
+  return `Uge ${isoWeekNumber(mondayOf(iso))} · ${formatWeekTitle(iso)}`;
 }
 
 function nextEvents(state, fromIso, limit = 3) {
