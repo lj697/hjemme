@@ -510,15 +510,15 @@ select {
 
 .tab em {
   position: absolute;
-  top: -2px;
-  right: 6px;
+  top: 4px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  min-width: 0;
+  padding: 0;
   background: var(--clay);
-  color: #fff;
-  font-style: normal;
-  font-size: 0.62rem;
-  min-width: 16px;
-  padding: 1px 4px;
-  border-radius: 999px;
+  border-radius: 50%;
+  font-size: 0;
 }
 
 .tab-icon {
@@ -1291,4 +1291,166 @@ fieldset {
     min-height: 100dvh;
     box-shadow: 0 0 0 1px rgba(42, 33, 28, 0.06), 0 20px 60px rgba(42, 33, 28, 0.12);
   }
+}
+
+.money-door {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 18px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  background: var(--card);
+  border: 1px dashed #b7c4b6;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.money-door strong {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 1.35rem;
+  font-weight: 560;
+  color: var(--moss);
+}
+
+.money-shell {
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+
+.money-shell .main {
+  padding-bottom: 32px;
+}
+
+.money-top .text-btn {
+  flex: 0 0 auto;
+  padding-bottom: 6px;
+}
+
+.money-view h2 {
+  margin: 0 0 6px;
+}
+
+.money-view .add-row {
+  grid-template-columns: 1fr 5.5rem auto;
+}
+
+.pot-incomes {
+  gap: 10px;
+}
+
+.pot-income {
+  display: grid;
+  grid-template-columns: 1fr 5.5rem auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.pot-income input,
+.pot-alloc input,
+#money-fill-form input {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.pot-set-aside {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.pot-set-aside div {
+  background: var(--card);
+  border: 1px solid rgba(42, 33, 28, 0.06);
+  border-radius: 18px;
+  padding: 14px 16px;
+}
+
+.pot-set-aside span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: lowercase;
+}
+
+.pot-set-aside strong {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 1.2rem;
+}
+
+.pot-card {
+  background: var(--card);
+  border: 1px solid rgba(42, 33, 28, 0.06);
+  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.pot-line {
+  margin: 0;
+  font-weight: 800;
+}
+
+.pot-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: #efe6db;
+  overflow: hidden;
+}
+
+.pot-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--moss);
+}
+
+.pot-bar.warn span { background: #c4a15a; }
+.pot-bar.over span { background: var(--clay); }
+
+.pot-allocs {
+  display: grid;
+  gap: 10px;
+}
+
+.pot-alloc {
+  display: grid;
+  gap: 4px;
+}
+
+.pot-alloc small {
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.pot-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.pot-result {
+  display: grid;
+  gap: 2px;
+  background: var(--card);
+  border-radius: 18px;
+  padding: 14px 16px;
+}
+
+.pot-result.ok strong { color: var(--moss); }
+.pot-result.warn strong { color: #8a6a2a; }
+.pot-result.over strong { color: var(--clay-dark); }
+
+.hint.warn {
+  color: var(--clay-dark);
+  font-weight: 700;
 }

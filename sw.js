@@ -1,4 +1,4 @@
-const CACHE = "hjemme-v8";
+const CACHE = "hjemme-v10";
 const ASSETS = [
   "./",
   "./index.html",
@@ -6,6 +6,7 @@ const ASSETS = [
   "./js/firebase-config.js",
   "./js/store.js",
   "./js/sync.js",
+  "./js/money.js",
   "./js/app.js",
   "./manifest.json",
   "./favicon.svg",

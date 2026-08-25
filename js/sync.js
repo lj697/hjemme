@@ -57,6 +57,7 @@ const HjemmeSync = (() => {
       events: state.events,
       notes: state.notes || [],
       meals: state.meals || [],
+      money: state.money || emptyMoney(),
       setupDone: true,
       updatedAt: Date.now(),
       writeId: lastWriteId

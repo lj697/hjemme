@@ -1,4 +1,5 @@
 let state = loadState();
+let area = "home";
 let view = "home";
 let sheet = null;
 let photoId = null;
@@ -19,6 +20,10 @@ let joinCodeDraft = "";
 let mealWeek = mondayOf(todayIso());
 let mealQuery = "";
 let keepMealSearch = false;
+
+const SEEN_KEY = "hjemme-seen-v1";
+const NAV_SECTIONS = ["shop", "chores", "cal", "meals", "notes"];
+let seen = loadSeen();
 
 const app = document.getElementById("app");
 
@@ -47,11 +52,13 @@ function applyCloudData(data) {
   const photos = state.listPhotos || [];
   const notes = Array.isArray(data.notes) ? data.notes : state.notes || [];
   const meals = Array.isArray(data.meals) ? data.meals : state.meals || [];
+  const money = data.money != null ? data.money : state.money;
   state = migrate({
     ...data,
     listPhotos: photos,
     notes,
     meals,
+    money,
     currentMemberId: memberId,
     householdId: data.householdId || state.householdId,
     setupDone: true
@@ -60,6 +67,75 @@ function applyCloudData(data) {
     state.currentMemberId = null;
   }
   saveState(state);
+}
+
+function loadSeen() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SEEN_KEY) || "{}");
+    return raw && typeof raw === "object" ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSeen() {
+  localStorage.setItem(SEEN_KEY, JSON.stringify(seen));
+}
+
+function clearSeen() {
+  seen = {};
+  localStorage.removeItem(SEEN_KEY);
+}
+
+function sectionStamp(name) {
+  const sorted = (list, pick) =>
+    JSON.stringify(
+      [...list]
+        .map(pick)
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+    );
+  if (name === "shop") {
+    return JSON.stringify({
+      shopping: sorted(state.shopping || [], (i) => [i.id, i.text, i.done]),
+      suggestions: [...(state.suggestions || [])].map((s) => s.toLowerCase()).sort()
+    });
+  }
+  if (name === "chores") {
+    return sorted(state.chores || [], (c) => [c.id, c.text, c.cadence, c.doneOn]);
+  }
+  if (name === "cal") {
+    return sorted(state.events || [], (e) => [e.id, e.title, e.date, e.time, e.kind, e.yearly]);
+  }
+  if (name === "notes") {
+    return sorted(state.notes || [], (n) => [n.id, n.title, n.body, n.updatedAt]);
+  }
+  if (name === "meals") {
+    return sorted(state.meals || [], (m) => [m.id, m.date, m.dish]);
+  }
+  return "";
+}
+
+function initSeenIfNeeded() {
+  let dirty = false;
+  for (const name of NAV_SECTIONS) {
+    if (seen[name] == null) {
+      seen[name] = sectionStamp(name);
+      dirty = true;
+    }
+  }
+  if (dirty) saveSeen();
+}
+
+function markSeen(name) {
+  if (!NAV_SECTIONS.includes(name)) return;
+  const stamp = sectionStamp(name);
+  if (seen[name] === stamp) return;
+  seen[name] = stamp;
+  saveSeen();
+}
+
+function hasUnseen(name) {
+  return Boolean(seen[name]) && seen[name] !== sectionStamp(name);
 }
 
 function firebaseErrorText(err, fallback) {
@@ -106,10 +182,6 @@ function dayMarkerDots(iso) {
   return `<span class="cal-dots">${dots.join("")}</span>`;
 }
 
-function openCount(list, pred) {
-  return list.filter(pred).length;
-}
-
 function addShopItem(text, assigneeId = null) {
   const name = text.trim();
   if (!name) return false;
@@ -150,6 +222,12 @@ function render() {
     bindShareCode();
     return;
   }
+  if (area === "money") {
+    app.innerHTML = HjemmeMoney.render(state);
+    HjemmeMoney.bind(state);
+    return;
+  }
+  if (NAV_SECTIONS.includes(view)) markSeen(view);
   app.innerHTML = `
     <div class="shell">
       ${renderHeader()}
@@ -309,6 +387,7 @@ function bindSetup() {
     state = demoState();
     persist();
     view = "home";
+    area = "home";
     selectedDay = todayIso();
     render();
   });
@@ -374,6 +453,8 @@ async function joinHouseholdFromSetup() {
     applyCloudData({ ...data, householdId: HjemmeSync.normalizeCode(code) });
     state.currentMemberId = null;
     persist();
+    clearSeen();
+    initSeenIfNeeded();
     setupPanel = "start";
     joinCodeDraft = "";
   } catch (err) {
@@ -449,26 +530,23 @@ function syncLine() {
 }
 
 function renderNav() {
-  const shop = openCount(state.shopping, (i) => !i.done);
-  const chores = openCount(state.chores, (c) => !choreIsDone(c));
-  const todayCount = eventsOn(state, todayIso()).filter((e) => e.kind !== "marker").length;
   const items = [
-    ["home", "Hjem", null],
-    ["shop", "Indkøb", shop],
-    ["chores", "Pligter", chores],
-    ["cal", "Kalender", todayCount || null],
-    ["meals", "Madplan", null],
-    ["notes", "Noter", (state.notes || []).length || null]
+    ["home", "Hjem"],
+    ["shop", "Indkøb"],
+    ["chores", "Pligter"],
+    ["cal", "Kalender"],
+    ["meals", "Madplan"],
+    ["notes", "Noter"]
   ];
   return `
     <nav class="tabbar">
       ${items
         .map(
-          ([id, label, count]) => `
+          ([id, label]) => `
         <button type="button" class="tab ${view === id ? "active" : ""}" data-view="${id}">
           <span class="tab-icon" data-icon="${id}"></span>
           <span>${label}</span>
-          ${count ? `<em>${count}</em>` : ""}
+          ${hasUnseen(id) ? `<em aria-label="Ændringer"></em>` : ""}
         </button>`
         )
         .join("")}
@@ -571,6 +649,11 @@ function renderHome() {
         </div>
       </div>
       <button type="button" class="text-btn" id="open-settings">Husstand og data</button>
+      <button type="button" class="money-door" id="open-money">
+        <span class="eyebrow">Afdeling</span>
+        <strong>Økonomi</strong>
+        <span class="hint">Indtægter, spande og ugen</span>
+      </button>
     </section>
   `;
 }
@@ -1157,6 +1240,12 @@ function bindMain() {
     editId = null;
     render();
   });
+  document.getElementById("open-money")?.addEventListener("click", () => {
+    area = "money";
+    sheet = null;
+    HjemmeMoney.enter(state);
+    render();
+  });
   document.getElementById("close-sheet")?.addEventListener("click", closeSheet);
   document.getElementById("overlay")?.addEventListener("click", (e) => {
     if (e.target.id === "overlay") closeSheet();
@@ -1586,11 +1675,14 @@ function bindMain() {
   document.getElementById("reset-demo")?.addEventListener("click", () => {
     HjemmeSync.leave();
     resetStorage();
+    clearSeen();
     state = demoState();
     persist();
+    initSeenIfNeeded();
     sheet = null;
     editId = null;
     view = "home";
+    area = "home";
     selectedDay = todayIso();
     render();
   });
@@ -1648,6 +1740,16 @@ function compressPhoto(file) {
   });
 }
 
+initSeenIfNeeded();
+HjemmeMoney.attach({
+  persist,
+  render,
+  leave() {
+    area = "home";
+    view = "home";
+    render();
+  }
+});
 render();
 
 HjemmeSync.connect({

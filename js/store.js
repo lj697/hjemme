@@ -82,8 +82,79 @@ function demoState() {
       { id: uid(), date: today, dish: "Frikadeller med kartofler" },
       { id: uid(), date: addDays(today, 1), dish: "Pasta med kødsauce" },
       { id: uid(), date: addDays(mondayOf(today), 4), dish: "Fiskefilet og rugbrød" }
-    ]
+    ],
+    money: demoMoney()
   };
+}
+
+function emptyMoney() {
+  return {
+    incomes: [],
+    allocations: { faste: 0, opsparing: 0, mad: 0, fritid: 0, born: 0, diverse: 0 },
+    locked: { faste: false },
+    fills: []
+  };
+}
+
+function normalizeMoney(raw) {
+  const empty = emptyMoney();
+  if (!raw || typeof raw !== "object") return empty;
+  const incomes = Array.isArray(raw.incomes)
+    ? raw.incomes.map((row) => ({
+        id: row.id || uid(),
+        label: String(row.label || "").trim() || "Indtægt",
+        amount: Math.max(0, Math.round(Number(row.amount) || 0))
+      }))
+    : [];
+  const allocations = { ...empty.allocations };
+  for (const key of Object.keys(allocations)) {
+    allocations[key] = Math.max(0, Math.round(Number(raw.allocations?.[key]) || 0));
+  }
+  const fills = Array.isArray(raw.fills)
+    ? raw.fills
+        .map((row) => ({
+          year: Number(row.year) || 0,
+          month: Number(row.month) || 0,
+          week: Number(row.week) || 0,
+          mad: Math.max(0, Math.round(Number(row.mad) || 0)),
+          fritid: Math.max(0, Math.round(Number(row.fritid) || 0)),
+          born: Math.max(0, Math.round(Number(row.born) || 0)),
+          diverse: Math.max(0, Math.round(Number(row.diverse) || 0))
+        }))
+        .filter((row) => row.year && row.month && row.week >= 1 && row.week <= 4)
+    : [];
+  return {
+    incomes,
+    allocations,
+    locked: { faste: Boolean(raw.locked?.faste) },
+    fills
+  };
+}
+
+function demoMoney() {
+  const incomes = [
+    { id: uid(), label: "Løn", amount: 28000 },
+    { id: uid(), label: "Løn", amount: 24000 },
+    { id: uid(), label: "Børnepenge", amount: 2200 }
+  ];
+  const allocations = { faste: 24390, opsparing: 5420, mad: 9756, fritid: 4336, born: 5420, diverse: 4878 };
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const week = Math.min(4, Math.ceil(now.getDate() / 7));
+  const fills = [];
+  for (let w = 1; w < week; w += 1) {
+    fills.push({
+      year,
+      month,
+      week: w,
+      mad: 1900 + w * 120,
+      fritid: 800 + w * 90,
+      born: 900 + w * 40,
+      diverse: 350 + w * 60
+    });
+  }
+  return { incomes, allocations, locked: { faste: false }, fills };
 }
 
 function emptyState() {
@@ -99,7 +170,8 @@ function emptyState() {
     chores: [],
     events: [],
     notes: [],
-    meals: []
+    meals: [],
+    money: emptyMoney()
   };
 }
 
@@ -110,6 +182,7 @@ function migrate(raw) {
   if (!Array.isArray(next.events)) next.events = [];
   if (!Array.isArray(next.notes)) next.notes = [];
   if (!Array.isArray(next.meals)) next.meals = [];
+  next.money = normalizeMoney(raw?.money);
   if (Array.isArray(raw.pickups) && !raw.events?.length) {
     next.events = raw.pickups
       .filter((p) => p.status !== "done")
