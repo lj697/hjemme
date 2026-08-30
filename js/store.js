@@ -87,12 +87,115 @@ function demoState() {
   };
 }
 
+function defaultBuckets() {
+  return [
+    { id: "faste", label: "Faste", weekly: false, weight: 45 },
+    { id: "opsparing", label: "Opsparing", weekly: false, weight: 10 },
+    { id: "mad", label: "Mad", weekly: true, weight: 18 },
+    { id: "fritid", label: "Fritid", weekly: true, weight: 8 },
+    { id: "born", label: "Børn", weekly: true, weight: 10 },
+    { id: "diverse", label: "Diverse", weekly: true, weight: 9 }
+  ];
+}
+
+function cloneBuckets(buckets) {
+  const source = Array.isArray(buckets) && buckets.length ? buckets : defaultBuckets();
+  return source.map((row, index) => ({
+    id: String(row.id || uid()),
+    label: String(row.label || "").trim() || `Pulje ${index + 1}`,
+    weekly: Boolean(row.weekly),
+    weight: Math.max(1, Math.round(Number(row.weight) || 10))
+  }));
+}
+
+function emptyLocked(buckets = defaultBuckets()) {
+  const locked = {};
+  for (const bucket of buckets) locked[bucket.id] = false;
+  return locked;
+}
+
+function emptyAllocations(buckets = defaultBuckets()) {
+  const allocations = {};
+  for (const bucket of buckets) allocations[bucket.id] = 0;
+  return allocations;
+}
+
 function emptyMoney() {
+  const buckets = defaultBuckets();
   return {
     incomes: [],
-    allocations: { faste: 0, opsparing: 0, mad: 0, fritid: 0, born: 0, diverse: 0 },
-    locked: { faste: false },
-    fills: []
+    buckets,
+    allocations: emptyAllocations(buckets),
+    locked: emptyLocked(buckets),
+    fills: [],
+    months: []
+  };
+}
+
+function cloneIncomes(incomes) {
+  return (incomes || []).map((row) => ({
+    id: row.id || uid(),
+    label: String(row.label || "").trim() || "Indtægt",
+    amount: Math.max(0, Math.round(Number(row.amount) || 0))
+  }));
+}
+
+function cloneAllocations(allocations, buckets = defaultBuckets()) {
+  const next = emptyAllocations(buckets);
+  const keys = new Set([...Object.keys(next), ...Object.keys(allocations || {})]);
+  for (const key of keys) {
+    next[key] = Math.max(0, Math.round(Number(allocations?.[key]) || 0));
+  }
+  return next;
+}
+
+function cloneLocked(locked, buckets = defaultBuckets()) {
+  const next = emptyLocked(buckets);
+  for (const key of Object.keys(locked || {})) {
+    next[key] = Boolean(locked[key]);
+  }
+  return next;
+}
+
+function findMonthPlan(money, year, month) {
+  return (money.months || []).find((row) => row.year === year && row.month === month) || null;
+}
+
+function snapshotMonthPlan(money, year, month, overwrite = false) {
+  if (!Array.isArray(money.months)) money.months = [];
+  const existing = findMonthPlan(money, year, month);
+  if (existing && !overwrite) return existing;
+  const payload = {
+    year,
+    month,
+    incomes: cloneIncomes(money.incomes),
+    buckets: cloneBuckets(money.buckets),
+    allocations: cloneAllocations(money.allocations, money.buckets),
+    locked: cloneLocked(money.locked, money.buckets)
+  };
+  if (existing) {
+    existing.incomes = payload.incomes;
+    existing.buckets = payload.buckets;
+    existing.allocations = payload.allocations;
+    existing.locked = payload.locked;
+    return existing;
+  }
+  money.months.push(payload);
+  return payload;
+}
+
+function normalizeMonthPlan(row) {
+  const year = Number(row?.year) || 0;
+  const month = Number(row?.month) || 0;
+  if (!year || month < 1 || month > 12) return null;
+  const buckets = cloneBuckets(row.buckets);
+  return {
+    year,
+    month,
+    incomes: cloneIncomes(row.incomes),
+    buckets,
+    allocations: cloneAllocations(row.allocations, buckets),
+    locked: cloneLocked(row.locked, buckets)
   };
 }
 
@@ -106,29 +209,51 @@ function normalizeMoney(raw) {
         amount: Math.max(0, Math.round(Number(row.amount) || 0))
       }))
     : [];
-  const allocations = { ...empty.allocations };
-  for (const key of Object.keys(allocations)) {
-    allocations[key] = Math.max(0, Math.round(Number(raw.allocations?.[key]) || 0));
-  }
+  const buckets = cloneBuckets(raw.buckets);
+  const allocations = cloneAllocations(raw.allocations, buckets);
   const fills = Array.isArray(raw.fills)
     ? raw.fills
-        .map((row) => ({
-          year: Number(row.year) || 0,
-          month: Number(row.month) || 0,
-          week: Number(row.week) || 0,
-          mad: Math.max(0, Math.round(Number(row.mad) || 0)),
-          fritid: Math.max(0, Math.round(Number(row.fritid) || 0)),
-          born: Math.max(0, Math.round(Number(row.born) || 0)),
-          diverse: Math.max(0, Math.round(Number(row.diverse) || 0))
-        }))
+        .map((row) => {
+          const next = {
+            year: Number(row.year) || 0,
+            month: Number(row.month) || 0,
+            week: Number(row.week) || 0
+          };
+          Object.keys(row).forEach((key) => {
+            if (key === "year" || key === "month" || key === "week") return;
+            next[key] = Math.max(0, Math.round(Number(row[key]) || 0));
+          });
+          return next;
+        })
         .filter((row) => row.year && row.month && row.week >= 1 && row.week <= 4)
     : [];
-  return {
+  const locked = cloneLocked(raw.locked, buckets);
+  const months = Array.isArray(raw.months)
+    ? raw.months.map(normalizeMonthPlan).filter(Boolean)
+    : [];
+  const next = {
     incomes,
+    buckets,
     allocations,
-    locked: { faste: Boolean(raw.locked?.faste) },
-    fills
+    locked,
+    fills,
+    months
   };
+  const seen = new Set(next.months.map((row) => `${row.year}-${row.month}`));
+  for (const fill of next.fills) {
+    const key = `${fill.year}-${fill.month}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    next.months.push({
+      year: fill.year,
+      month: fill.month,
+      incomes: cloneIncomes(next.incomes),
+      buckets: cloneBuckets(next.buckets),
+      allocations: cloneAllocations(next.allocations, next.buckets),
+      locked: cloneLocked(next.locked, next.buckets)
+    });
+  }
+  return next;
 }
 
 function demoMoney() {
@@ -154,7 +279,16 @@ function demoMoney() {
       diverse: 350 + w * 60
     });
   }
-  return { incomes, allocations, locked: { faste: false }, fills };
+  const money = {
+    incomes,
+    buckets: defaultBuckets(),
+    allocations,
+    locked: emptyLocked(),
+    fills,
+    months: []
+  };
+  snapshotMonthPlan(money, year, month, true);
+  return money;
 }
 
 function emptyState() {

@@ -652,7 +652,7 @@ function renderHome() {
       <button type="button" class="money-door" id="open-money">
         <span class="eyebrow">Afdeling</span>
         <strong>Økonomi</strong>
-        <span class="hint">Indtægter, spande og ugen</span>
+        <span class="hint">Indtægter, puljer og ugen</span>
       </button>
     </section>
   `;

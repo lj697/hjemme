@@ -1359,7 +1359,7 @@ fieldset {
 
 .pot-set-aside {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
 }
 
@@ -1422,12 +1422,106 @@ fieldset {
 
 .pot-alloc {
   display: grid;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid rgba(42, 33, 28, 0.06);
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+
+.pot-alloc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.pot-alloc-name {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  font-weight: 800;
+}
+
+.pot-alloc-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.pot-alloc-fields {
+  display: grid;
+  grid-template-columns: 1fr 5.6rem;
+  gap: 8px;
+}
+
+.pot-alloc-fields label {
+  display: grid;
   gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.pot-alloc.locked {
+  background: #f7f2ea;
+}
+
+.pot-alloc input[readonly] {
+  background: #efe6db;
 }
 
 .pot-alloc small {
   font-weight: 700;
   color: var(--muted);
+}
+
+.money-weeks {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.money-week {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(42, 33, 28, 0.06);
+  background: var(--card);
+  border-radius: 16px;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.money-week.today {
+  box-shadow: 0 0 0 1.5px var(--clay);
+}
+
+.money-week.filled span {
+  font-weight: 800;
+  color: var(--moss);
+}
+
+.money-week:disabled {
+  opacity: 0.45;
+}
+
+.money-week span {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex: 0 0 auto;
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .pot-results {
