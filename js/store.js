@@ -157,6 +157,16 @@ function cloneLocked(locked, buckets = defaultBuckets()) {
   return next;
 }
 
+function cloneFillNotes(notes) {
+  if (!notes || typeof notes !== "object" || Array.isArray(notes)) return {};
+  const next = {};
+  for (const [key, value] of Object.entries(notes)) {
+    const text = String(value || "").trim();
+    if (text) next[key] = text.slice(0, 80);
+  }
+  return next;
+}
+
 function findMonthPlan(money, year, month) {
   return (money.months || []).find((row) => row.year === year && row.month === month) || null;
 }
@@ -220,9 +230,10 @@ function normalizeMoney(raw) {
             week: Number(row.week) || 0
           };
           Object.keys(row).forEach((key) => {
-            if (key === "year" || key === "month" || key === "week") return;
+            if (key === "year" || key === "month" || key === "week" || key === "notes") return;
             next[key] = Math.max(0, Math.round(Number(row[key]) || 0));
           });
+          next.notes = cloneFillNotes(row.notes);
           return next;
         })
         .filter((row) => row.year && row.month && row.week >= 1 && row.week <= 4)
@@ -268,6 +279,23 @@ function demoMoney() {
   const month = now.getMonth() + 1;
   const week = Math.min(4, Math.ceil(now.getDate() / 7));
   const fills = [];
+  for (let back = 5; back >= 1; back -= 1) {
+    const d = new Date(year, month - 1 - back, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    for (let w = 1; w <= 4; w += 1) {
+      fills.push({
+        year: y,
+        month: m,
+        week: w,
+        mad: 1700 + w * 90 + back * 40,
+        fritid: 700 + w * 70 + (back % 3) * 80,
+        born: 850 + w * 35,
+        diverse: 300 + w * 50 + back * 20,
+        notes: w === 2 && back === 1 ? { mad: "Gæster i weekenden" } : w === 3 && back === 2 ? { fritid: "Biograf" } : {}
+      });
+    }
+  }
   for (let w = 1; w < week; w += 1) {
     fills.push({
       year,
@@ -276,7 +304,8 @@ function demoMoney() {
       mad: 1900 + w * 120,
       fritid: 800 + w * 90,
       born: 900 + w * 40,
-      diverse: 350 + w * 60
+      diverse: 350 + w * 60,
+      notes: w === 1 ? { mad: "Fødselsdag hos mormor" } : w === 2 ? { fritid: "Fodboldstævne" } : {}
     });
   }
   const money = {
@@ -287,7 +316,10 @@ function demoMoney() {
     fills,
     months: []
   };
-  snapshotMonthPlan(money, year, month, true);
+  for (let back = 5; back >= 0; back -= 1) {
+    const d = new Date(year, month - 1 - back, 1);
+    snapshotMonthPlan(money, d.getFullYear(), d.getMonth() + 1, true);
+  }
   return money;
 }
 

@@ -67,6 +67,7 @@ function applyCloudData(data) {
     state.currentMemberId = null;
   }
   saveState(state);
+  HjemmeSync.adopt(state);
 }
 
 function loadSeen() {

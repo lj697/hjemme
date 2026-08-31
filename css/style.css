@@ -102,11 +102,13 @@ select {
 .main {
   flex: 1;
   padding: 12px 20px 24px;
+  min-width: 0;
 }
 
 .stack {
   display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .section-head {
@@ -1317,6 +1319,8 @@ fieldset {
 
 .money-shell {
   padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .money-shell .main {
@@ -1328,8 +1332,13 @@ fieldset {
   padding-bottom: 6px;
 }
 
+.money-view {
+  min-width: 0;
+}
+
 .money-view h2 {
   margin: 0 0 6px;
+  overflow-wrap: anywhere;
 }
 
 .money-view .add-row {
@@ -1357,17 +1366,22 @@ fieldset {
   padding: 12px;
 }
 
+.pot-fill-row {
+  display: grid;
+  gap: 6px;
+}
+
+.pot-fill-fields {
+  display: grid;
+  grid-template-columns: 5.6rem minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
 .pot-set-aside {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
-}
-
-.pot-set-aside div {
-  background: var(--card);
-  border: 1px solid rgba(42, 33, 28, 0.06);
-  border-radius: 18px;
-  padding: 14px 16px;
 }
 
 .pot-set-aside span {
@@ -1391,6 +1405,29 @@ fieldset {
   padding: 16px 18px;
   display: grid;
   gap: 8px;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pot-card.static {
+  cursor: default;
+}
+
+.pot-set-aside .pot-aside {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  background: var(--card);
+  border: 1px solid rgba(42, 33, 28, 0.06);
+  border-radius: 18px;
+  padding: 14px 16px;
+  cursor: pointer;
 }
 
 .pot-line {
@@ -1534,7 +1571,7 @@ fieldset {
 
 .pot-result {
   display: grid;
-  gap: 2px;
+  gap: 4px;
   background: var(--card);
   border-radius: 18px;
   padding: 14px 16px;
@@ -1543,6 +1580,276 @@ fieldset {
 .pot-result.ok strong { color: var(--moss); }
 .pot-result.warn strong { color: #8a6a2a; }
 .pot-result.over strong { color: var(--clay-dark); }
+
+.pot-chart-frame {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  background: var(--card);
+  border-radius: 18px;
+  border: 1px solid rgba(42, 33, 28, 0.06);
+  padding: 10px 10px 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pot-chart-plot {
+  position: relative;
+  height: 96px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pot-chart-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1.5px dashed var(--moss);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pot-curve {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.pot-curve-fill {
+  fill: var(--moss);
+  opacity: 0.16;
+  stroke: none;
+}
+
+.pot-curve-stroke {
+  fill: none;
+  stroke: var(--moss);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.pot-curve-avg {
+  stroke: var(--moss);
+  stroke-width: 1.25;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.75;
+}
+
+.pot-curve-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 2px solid var(--card);
+  border-radius: 50%;
+  background: var(--moss);
+  transform: translate(-50%, 50%);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.pot-chart {
+  display: grid;
+  align-items: end;
+  column-gap: 2px;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+.pot-chart-col {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  background: #efe6db;
+  border-radius: 3px 3px 1px 1px;
+  overflow: hidden;
+}
+
+.pot-chart-col span {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  background: var(--moss);
+  border-radius: 3px 3px 0 0;
+}
+
+.pot-chart-col.warn span { background: #c4a15a; }
+.pot-chart-col.over span { background: var(--clay); }
+.pot-chart-col.empty span { background: transparent; }
+
+.pot-chart-axis {
+  display: grid;
+  column-gap: 2px;
+  min-width: 0;
+  width: 100%;
+}
+
+.pot-chart-axis span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: lowercase;
+  text-align: center;
+}
+
+.pot-chart-tools {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pot-switch {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pot-switch .is-on {
+  color: var(--ink);
+}
+
+.pot-switch-track {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #e4dbd1;
+}
+
+.pot-switch-track i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--moss);
+  transition: transform 0.16s ease;
+}
+
+.pot-switch.on .pot-switch-track i {
+  transform: translateX(16px);
+}
+
+.pot-range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pot-range .tool {
+  min-width: 0;
+  width: 100%;
+  text-align: center;
+}
+
+.pot-avg {
+  background: var(--card);
+  border: 1px solid rgba(42, 33, 28, 0.06);
+  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  min-width: 0;
+}
+
+.pot-avg h2 {
+  margin: 4px 0 6px;
+  font-size: 2rem;
+}
+
+.pot-avg .hint {
+  overflow-wrap: anywhere;
+}
+
+.pot-stat-month {
+  display: grid;
+  gap: 8px;
+}
+
+.pot-stat-weeks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.pot-stat-week {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(42, 33, 28, 0.06);
+  background: var(--card);
+  border-radius: 16px;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.pot-stat-week.static {
+  cursor: default;
+}
+
+.pot-stat-week-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.pot-stat-week-top span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pot-stat-week-top span strong,
+.pot-stat-week-top span small {
+  overflow-wrap: anywhere;
+}
+
+.pot-stat-note {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.pot-stat-week .pot-stat-note,
+.pot-result .pot-stat-note,
+.pot-card .pot-stat-note {
+  padding-top: 6px;
+  border-top: 1px solid rgba(42, 33, 28, 0.08);
+}
 
 .hint.warn {
   color: var(--clay-dark);

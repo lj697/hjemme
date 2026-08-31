@@ -1,5 +1,17 @@
 const FIREBASE_SDK = "https://www.gstatic.com/firebasejs/11.10.0";
 const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const CLOUD_KEYS = [
+  "householdName",
+  "members",
+  "suggestions",
+  "shopping",
+  "chores",
+  "events",
+  "notes",
+  "meals",
+  "money",
+  "setupDone"
+];
 
 const HjemmeSync = (() => {
   let app = null;
@@ -9,6 +21,10 @@ const HjemmeSync = (() => {
   let lastWriteId = null;
   let saveTimer = null;
   let applyingRemote = false;
+  let hydrated = false;
+  let lastCloud = {};
+  let pendingKeys = new Set();
+  let pendingState = null;
   let status = { kind: "off", message: "" };
   let hooks = { onRemote: null, onStatus: null };
 
@@ -45,23 +61,41 @@ const HjemmeSync = (() => {
       .slice(0, 6);
   }
 
-  function cloudPayload(state) {
+  function cloneJson(value) {
+    return JSON.parse(JSON.stringify(value ?? null));
+  }
+
+  function fieldFromState(state, key) {
+    if (key === "notes") return state.notes || [];
+    if (key === "meals") return state.meals || [];
+    if (key === "money") return state.money || emptyMoney();
+    if (key === "setupDone") return true;
+    return state[key];
+  }
+
+  function fingerprint(value) {
+    return JSON.stringify(value ?? null);
+  }
+
+  function rememberCloud(data) {
+    lastCloud = {};
+    if (!data) return;
+    for (const key of CLOUD_KEYS) lastCloud[key] = cloneJson(data[key]);
+  }
+
+  function changedKeys(state) {
+    return CLOUD_KEYS.filter((key) => fingerprint(fieldFromState(state, key)) !== fingerprint(lastCloud[key]));
+  }
+
+  function buildPayload(state, keys) {
     lastWriteId = uid();
-    return {
+    const body = {
       householdId: state.householdId,
-      householdName: state.householdName,
-      members: state.members,
-      suggestions: state.suggestions,
-      shopping: state.shopping,
-      chores: state.chores,
-      events: state.events,
-      notes: state.notes || [],
-      meals: state.meals || [],
-      money: state.money || emptyMoney(),
-      setupDone: true,
       updatedAt: Date.now(),
       writeId: lastWriteId
     };
+    for (const key of keys) body[key] = fieldFromState(state, key);
+    return cloneJson(body);
   }
 
   async function loadSdk() {
@@ -100,12 +134,18 @@ const HjemmeSync = (() => {
     if (!ready || !householdId || !db) return;
     const sdk = HjemmeSync._sdk;
     unsub?.();
+    hydrated = false;
+    pendingKeys.clear();
+    pendingState = null;
+    clearTimeout(saveTimer);
     const ref = sdk.doc(db, "households", householdId);
     unsub = sdk.onSnapshot(
       ref,
       (snap) => {
         if (!snap.exists()) return;
         const data = snap.data();
+        rememberCloud(data);
+        hydrated = true;
         if (data.writeId && data.writeId === lastWriteId) return;
         applyingRemote = true;
         setStatus("live", "Delt husstand");
@@ -119,25 +159,47 @@ const HjemmeSync = (() => {
     setStatus("live", "Delt husstand");
   }
 
+  function adopt(state) {
+    if (!state) return;
+    lastCloud = {};
+    for (const key of CLOUD_KEYS) lastCloud[key] = cloneJson(fieldFromState(state, key));
+  }
+
   function leave() {
     unsub?.();
     unsub = null;
     lastWriteId = null;
+    hydrated = false;
+    lastCloud = {};
+    pendingKeys.clear();
+    pendingState = null;
+    clearTimeout(saveTimer);
     if (ready) setStatus("ready", "Klar til at dele.");
   }
 
-  async function writeHousehold(state) {
-    if (!ready || !state.householdId) return;
+  async function writeHousehold(state, keys, merge) {
+    if (!ready || !state.householdId || !keys.length) return;
     const sdk = HjemmeSync._sdk;
     const ref = sdk.doc(db, "households", state.householdId);
-    await sdk.setDoc(ref, JSON.parse(JSON.stringify(cloudPayload(state))));
+    await sdk.setDoc(ref, buildPayload(state, keys), merge ? { merge: true } : {});
+    if (!lastCloud) lastCloud = {};
+    for (const key of keys) lastCloud[key] = cloneJson(fieldFromState(state, key));
   }
 
   function push(state) {
-    if (applyingRemote || !ready || !state.householdId) return;
+    if (applyingRemote || !ready || !state.householdId || !hydrated) return;
+    const extra = changedKeys(state);
+    extra.forEach((key) => pendingKeys.add(key));
+    if (!pendingKeys.size) return;
+    pendingState = state;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      writeHousehold(state).catch((err) => setStatus("error", firebaseError(err)));
+      const keys = [...pendingKeys];
+      const snap = pendingState;
+      pendingKeys.clear();
+      pendingState = null;
+      if (!hydrated || !snap || !keys.length) return;
+      writeHousehold(snap, keys, true).catch((err) => setStatus("error", firebaseError(err)));
     }, 400);
   }
 
@@ -151,7 +213,8 @@ const HjemmeSync = (() => {
       code = makeCode();
     }
     state.householdId = code;
-    await writeHousehold(state);
+    await writeHousehold(state, CLOUD_KEYS, false);
+    hydrated = true;
     attach(code);
     return code;
   }
@@ -163,6 +226,8 @@ const HjemmeSync = (() => {
     const sdk = HjemmeSync._sdk;
     const snap = await sdk.getDoc(sdk.doc(db, "households", id));
     if (!snap.exists()) throw new Error("not-found");
+    rememberCloud(snap.data());
+    hydrated = true;
     attach(id);
     return snap.data();
   }
@@ -191,6 +256,7 @@ const HjemmeSync = (() => {
     normalizeCode,
     connect,
     attach,
+    adopt,
     leave,
     push,
     createHousehold,
