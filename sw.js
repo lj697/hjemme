@@ -1,4 +1,4 @@
-const CACHE = "hjemme-v24";
+const CACHE = "hjemme-v26";
 const ASSETS = [
   "./",
   "./index.html",

@@ -10,6 +10,8 @@ let calMode = "days";
 let boughtOpen = false;
 let paperPeekId = null;
 let keepShopFocus = false;
+let keepTodoFocus = false;
+let todoDoneOpen = false;
 let editId = null;
 let setupPanel = "start";
 let showShareCode = false;
@@ -23,7 +25,10 @@ let keepMealSearch = false;
 
 const SEEN_KEY = "hjemme-seen-v1";
 const NAV_SECTIONS = ["shop", "chores", "cal", "meals", "notes"];
+const MONEY_HASH = "#okonomi";
 let seen = loadSeen();
+let moneyOpenedFromHome = false;
+let moneyHistoryReady = false;
 
 const app = document.getElementById("app");
 
@@ -34,6 +39,61 @@ function persist() {
     window.alert("Der er ikke plads til flere billeder i denne prototype. Slet et listebillede og prøv igen.");
   }
   HjemmeSync.push(state);
+}
+
+function homeHistoryUrl() {
+  return `${location.pathname}${location.search}`;
+}
+
+function moneyHistoryUrl() {
+  return `${homeHistoryUrl()}${MONEY_HASH}`;
+}
+
+function openMoneyArea() {
+  area = "money";
+  sheet = null;
+  HjemmeMoney.enter(state);
+  if (history.state?.hjemme !== "money") {
+    history.pushState({ hjemme: "money" }, "", moneyHistoryUrl());
+    moneyOpenedFromHome = true;
+  }
+  render();
+}
+
+function closeMoneyArea(fromPop) {
+  area = "home";
+  view = "home";
+  moneyOpenedFromHome = false;
+  if (!fromPop && location.hash === MONEY_HASH) {
+    history.replaceState(null, "", homeHistoryUrl());
+  }
+  render();
+}
+
+function leaveMoneyArea() {
+  if (moneyOpenedFromHome && history.state?.hjemme === "money") {
+    history.back();
+    return;
+  }
+  closeMoneyArea();
+}
+
+function onMoneyPopState() {
+  if (!moneyHistoryReady) return;
+  if (area === "money") {
+    if (HjemmeMoney.handleBrowserBack(state) === "stay") {
+      history.pushState({ hjemme: "money" }, "", moneyHistoryUrl());
+      render();
+      return;
+    }
+    closeMoneyArea(true);
+    return;
+  }
+  if (history.state?.hjemme === "money" || location.hash === MONEY_HASH) {
+    area = "money";
+    moneyOpenedFromHome = true;
+    render();
+  }
 }
 
 function syncStatus() {
@@ -102,7 +162,7 @@ function sectionStamp(name) {
     });
   }
   if (name === "chores") {
-    return sorted(state.chores || [], (c) => [c.id, c.text, c.cadence, c.doneOn]);
+    return sorted(state.chores || [], (c) => [c.id, c.text, c.done]);
   }
   if (name === "cal") {
     return sorted(state.events || [], (e) => [e.id, e.title, e.date, e.time, e.kind, e.yearly]);
@@ -183,6 +243,23 @@ function dayMarkerDots(iso) {
   return `<span class="cal-dots">${dots.join("")}</span>`;
 }
 
+function addTodoItem(text) {
+  const name = text.trim();
+  if (!name) return false;
+  const existing = state.chores.find((c) => c.text.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    existing.done = false;
+    return true;
+  }
+  state.chores.unshift({
+    id: uid(),
+    text: name,
+    done: false,
+    createdAt: Date.now()
+  });
+  return true;
+}
+
 function addShopItem(text, assigneeId = null) {
   const name = text.trim();
   if (!name) return false;
@@ -250,7 +327,7 @@ function renderSetup() {
     <section class="setup">
       <p class="eyebrow">Husstand</p>
       <h1>Hjemme</h1>
-      <p class="lede">Indkøb, pligter, kalender, noter og madplan, I alle kan bruge.</p>
+      <p class="lede">Indkøb, to-do, kalender, noter og madplan, I alle kan bruge.</p>
       <div class="setup-actions">
         <button type="button" class="btn btn-primary" id="go-create">Opret husstand</button>
         <button type="button" class="btn" id="go-join">Tilslut med kode</button>
@@ -534,7 +611,7 @@ function renderNav() {
   const items = [
     ["home", "Hjem"],
     ["shop", "Indkøb"],
-    ["chores", "Pligter"],
+    ["chores", "To-do"],
     ["cal", "Kalender"],
     ["meals", "Madplan"],
     ["notes", "Noter"]
@@ -612,16 +689,16 @@ function renderHome() {
           <span>${shopLeft.length === 1 ? "vare tilbage" : "varer tilbage"}</span>
         </button>
         <button type="button" class="mini-card" data-view="chores">
-          <p class="eyebrow">Pligter</p>
+          <p class="eyebrow">To-do</p>
           <strong>${choreLeft.length}</strong>
-          <span>ikke klaret</span>
+          <span>${choreLeft.length === 1 ? "åben" : "åbne"}</span>
         </button>
       </div>
       ${
         choreLeft.length
           ? `<div class="list-card" data-view="chores" role="link">
               <div>
-                <p class="eyebrow">I dag derhjemme</p>
+                <p class="eyebrow">To-do</p>
                 <ul class="plain">${choreLeft
                   .map((c) => `<li>${escapeHtml(c.text)}</li>`)
                   .join("")}</ul>
@@ -741,37 +818,57 @@ function shopRow(item) {
 }
 
 function renderChores() {
-  const open = state.chores.filter((c) => !choreIsDone(c));
-  const done = state.chores.filter((c) => choreIsDone(c));
+  const open = state.chores.filter((c) => !c.done);
+  const done = state.chores.filter((c) => c.done);
+  const leftLabel = open.length === 1 ? "1 åben" : `${open.length} åbne`;
   return `
-    <section class="stack">
-      <div class="section-head">
-        <h2>Pligter</h2>
-        <button type="button" class="btn" data-sheet="chore">Ny pligt</button>
-      </div>
-      <ul class="rows">${open.map(choreRow).join("") || empty("Ingen åbne pligter.")}</ul>
-      ${done.length ? `<p class="eyebrow">Klaret</p><ul class="rows dim">${done.map(choreRow).join("")}</ul>` : ""}
+    <section class="shop">
+      <header class="shop-head">
+        <div>
+          <h2>To-do</h2>
+          <p class="hint">${open.length ? leftLabel : "Listen er tom — skriv en opgave nedenunder"}</p>
+        </div>
+      </header>
+      ${
+        open.length
+          ? `<ul class="shop-list">${open.map(choreRow).join("")}</ul>`
+          : `<div class="shop-empty">
+              <p>Ingen åbne opgaver.</p>
+              <p class="hint">Skriv det, I skal huske, og sæt flueben når det er gjort.</p>
+            </div>`
+      }
+      ${
+        done.length
+          ? `<div class="bought">
+              <button type="button" class="bought-toggle" id="toggle-todo-done">
+                ${done.length} klaret ${todoDoneOpen ? "▾" : "▸"}
+              </button>
+              ${
+                todoDoneOpen
+                  ? `<ul class="shop-list dim">${done.map(choreRow).join("")}</ul>
+              <button type="button" class="text-btn" id="clear-todo-done">Tøm klarede</button>`
+                  : ""
+              }
+            </div>`
+          : ""
+      }
+      <form class="shop-add" id="todo-form">
+        <input name="text" placeholder="Tilføj opgave" autocomplete="off" enterkeyhint="done" required>
+        <button type="submit" class="add-plus" aria-label="Tilføj">+</button>
+      </form>
     </section>
   `;
 }
 
-function cadenceLabel(cadence) {
-  return { once: "Én gang", daily: "Hver dag", weekly: "Hver uge", monthly: "Hver måned" }[cadence] || cadence;
-}
-
 function choreRow(chore) {
-  const done = choreIsDone(chore);
   return `
-    <li class="row ${done ? "done" : ""}">
-      <label class="check">
-        <input type="checkbox" data-toggle-chore="${chore.id}" ${done ? "checked" : ""}>
+    <li class="shop-item ${chore.done ? "done" : ""}">
+      <label class="shop-check">
+        <input type="checkbox" data-toggle-chore="${chore.id}" ${chore.done ? "checked" : ""}>
+        <span class="box"></span>
       </label>
-      <button type="button" class="row-edit" data-edit-chore="${chore.id}">
-        <span>
-          ${escapeHtml(chore.text)}
-          <small>${cadenceLabel(chore.cadence)}</small>
-        </span>
-      </button>
+      <button type="button" class="name" data-edit-chore="${chore.id}">${escapeHtml(chore.text)}</button>
+      <button type="button" class="item-x" data-delete-chore="${chore.id}" aria-label="Fjern">×</button>
     </li>
   `;
 }
@@ -1022,7 +1119,7 @@ function renderNotes() {
 function renderSheet() {
   const editing = Boolean(editId);
   const title = {
-    chore: editing ? "Rediger pligt" : "Ny pligt",
+    chore: "Rediger opgave",
     event: editing ? "Rediger aftale" : "Ny aftale",
     marker: editing ? "Rediger mærkedag" : "Ny mærkedag",
     note: editing ? "Rediger note" : "Ny note",
@@ -1096,20 +1193,12 @@ function sheetMarkup() {
   }
   if (sheet === "chore") {
     const chore = state.chores.find((c) => c.id === editId);
-    const cadence = chore?.cadence || "weekly";
+    if (!chore) return `<p class="hint">Opgaven findes ikke.</p>`;
     return `
       <form class="form" id="chore-form">
-        <label>Hvad <input name="text" required placeholder="fx Tøm skrald" value="${escapeHtml(chore?.text || "")}"></label>
-        <label>Hvor ofte
-          <select name="cadence">
-            <option value="once" ${cadence === "once" ? "selected" : ""}>Én gang</option>
-            <option value="daily" ${cadence === "daily" ? "selected" : ""}>Hver dag</option>
-            <option value="weekly" ${cadence === "weekly" ? "selected" : ""}>Hver uge</option>
-            <option value="monthly" ${cadence === "monthly" ? "selected" : ""}>Hver måned</option>
-          </select>
-        </label>
-        <button type="submit" class="btn btn-primary">${chore ? "Gem ændringer" : "Gem pligt"}</button>
-        ${chore ? `<button type="button" class="text-btn danger" id="delete-editing">Slet pligt</button>` : ""}
+        <label>Opgave <input name="text" required placeholder="fx Bestil tid til bilen" value="${escapeHtml(chore.text)}"></label>
+        <button type="submit" class="btn btn-primary">Gem ændringer</button>
+        <button type="button" class="text-btn danger" id="delete-editing">Slet opgave</button>
       </form>
     `;
   }
@@ -1210,7 +1299,7 @@ function renderShareSettings() {
     `;
   }
   return `
-    <p class="hint">Del indkøb, pligter, kalender, noter og madplan med den anden telefon.</p>
+    <p class="hint">Del indkøb, to-do, kalender, noter og madplan med den anden telefon.</p>
     <button type="button" class="btn" id="share-house" ${!HjemmeSync.isReady() || setupBusy ? "disabled" : ""}>Opret fælles husstand</button>
     ${status.kind === "error" ? `<p class="sync-line warn">${escapeHtml(status.message)}</p>` : ""}
   `;
@@ -1242,10 +1331,7 @@ function bindMain() {
     render();
   });
   document.getElementById("open-money")?.addEventListener("click", () => {
-    area = "money";
-    sheet = null;
-    HjemmeMoney.enter(state);
-    render();
+    openMoneyArea();
   });
   document.getElementById("close-sheet")?.addEventListener("click", closeSheet);
   document.getElementById("overlay")?.addEventListener("click", (e) => {
@@ -1466,36 +1552,46 @@ function bindMain() {
     render();
   });
 
+  document.getElementById("todo-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const data = new FormData(e.target);
+    addTodoItem(String(data.get("text") || ""));
+    keepTodoFocus = true;
+    persist();
+    render();
+  });
   app.querySelectorAll("[data-toggle-chore]").forEach((input) => {
     input.addEventListener("change", () => {
       const chore = state.chores.find((c) => c.id === input.dataset.toggleChore);
       if (!chore) return;
-      chore.doneOn = input.checked ? todayIso() : null;
+      chore.done = input.checked;
       persist();
       render();
     });
   });
+  app.querySelectorAll("[data-delete-chore]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.chores = state.chores.filter((c) => c.id !== btn.dataset.deleteChore);
+      persist();
+      render();
+    });
+  });
+  document.getElementById("toggle-todo-done")?.addEventListener("click", () => {
+    todoDoneOpen = !todoDoneOpen;
+    render();
+  });
+  document.getElementById("clear-todo-done")?.addEventListener("click", () => {
+    state.chores = state.chores.filter((c) => !c.done);
+    todoDoneOpen = false;
+    persist();
+    render();
+  });
   document.getElementById("chore-form")?.addEventListener("submit", (e) => {
     e.preventDefault();
-    const data = new FormData(e.target);
-    const text = String(data.get("text") || "").trim();
-    const cadence = String(data.get("cadence") || "weekly");
+    const text = String(new FormData(e.target).get("text") || "").trim();
     if (!text) return;
-    if (editId) {
-      const chore = state.chores.find((c) => c.id === editId);
-      if (chore) {
-        chore.text = text;
-        chore.cadence = cadence;
-      }
-    } else {
-      state.chores.unshift({
-        id: uid(),
-        text,
-        assigneeId: null,
-        cadence,
-        doneOn: null
-      });
-    }
+    const chore = state.chores.find((c) => c.id === editId);
+    if (chore) chore.text = text;
     editId = null;
     sheet = null;
     persist();
@@ -1696,6 +1792,10 @@ function bindMain() {
     keepShopFocus = false;
     document.querySelector('#shop-form input[name="text"]')?.focus();
   }
+  if (keepTodoFocus) {
+    keepTodoFocus = false;
+    document.querySelector('#todo-form input[name="text"]')?.focus();
+  }
   if (keepMealSearch) {
     keepMealSearch = false;
     const search = document.getElementById("meal-search");
@@ -1742,16 +1842,19 @@ function compressPhoto(file) {
 }
 
 initSeenIfNeeded();
+if (state.setupDone && location.hash === MONEY_HASH) {
+  area = "money";
+  HjemmeMoney.enter(state);
+  history.replaceState({ hjemme: "money" }, "", moneyHistoryUrl());
+}
 HjemmeMoney.attach({
   persist,
   render,
-  leave() {
-    area = "home";
-    view = "home";
-    render();
-  }
+  leave: leaveMoneyArea
 });
+window.addEventListener("popstate", onMoneyPopState);
 render();
+moneyHistoryReady = true;
 
 HjemmeSync.connect({
   onRemote(data) {

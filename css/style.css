@@ -1327,9 +1327,24 @@ fieldset {
   padding-bottom: 32px;
 }
 
+.money-top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--paper);
+}
+
+.money-top > div:first-child {
+  min-width: 0;
+}
+
+.money-top h1 {
+  overflow-wrap: anywhere;
+}
+
 .money-top .text-btn {
   flex: 0 0 auto;
-  padding-bottom: 6px;
+  padding: 8px 0 6px 12px;
 }
 
 .money-view {

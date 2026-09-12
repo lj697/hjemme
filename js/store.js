@@ -61,10 +61,9 @@ function demoState() {
     ],
     listPhotos: [],
     chores: [
-      { id: uid(), text: "Opvask", assigneeId: lars, cadence: "daily", doneOn: null },
-      { id: uid(), text: "Tøm skrald", assigneeId: noah, cadence: "weekly", doneOn: null },
-      { id: uid(), text: "Støvsug stuen", assigneeId: mia, cadence: "weekly", doneOn: today },
-      { id: uid(), text: "Rengør køleskab", assigneeId: lars, cadence: "monthly", doneOn: null }
+      { id: uid(), text: "Bestil tid til bilen", done: false, createdAt: now },
+      { id: uid(), text: "Svar på beskeden fra skolen", done: false, createdAt: now },
+      { id: uid(), text: "Hente pakke i Netto", done: true, createdAt: now }
     ],
     events: [
       { id: uid(), title: "Hent Noah efter fodbold", date: today, time: "16:30", assigneeIds: [lars], kind: "event" },
@@ -348,6 +347,7 @@ function migrate(raw) {
   if (!Array.isArray(next.events)) next.events = [];
   if (!Array.isArray(next.notes)) next.notes = [];
   if (!Array.isArray(next.meals)) next.meals = [];
+  next.chores = Array.isArray(next.chores) ? next.chores.map(normalizeChore) : [];
   next.money = normalizeMoney(raw?.money);
   if (Array.isArray(raw.pickups) && !raw.events?.length) {
     next.events = raw.pickups
@@ -405,13 +405,27 @@ function resetStorage() {
   localStorage.removeItem(LEGACY_KEY);
 }
 
-function choreIsDone(chore) {
-  if (!chore.doneOn) return false;
+function choreLegacyDone(chore) {
+  if (typeof chore?.done === "boolean") return chore.done;
+  if (!chore?.doneOn) return false;
   if (chore.cadence === "once") return true;
   if (chore.cadence === "daily") return chore.doneOn === todayIso();
   if (chore.cadence === "weekly") return isSameWeek(chore.doneOn, todayIso());
   if (chore.cadence === "monthly") return chore.doneOn.slice(0, 7) === todayIso().slice(0, 7);
   return false;
+}
+
+function normalizeChore(row) {
+  return {
+    id: row.id || uid(),
+    text: String(row.text || "").trim() || "Opgave",
+    done: choreLegacyDone(row),
+    createdAt: Number(row.createdAt) || Date.now()
+  };
+}
+
+function choreIsDone(chore) {
+  return Boolean(chore?.done);
 }
 
 function isSameWeek(isoA, isoB) {

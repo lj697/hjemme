@@ -1,7 +1,7 @@
 {
   "name": "Hjemme",
   "short_name": "Hjemme",
-  "description": "Indkøb, pligter, udgifter og afhentning for husstanden.",
+  "description": "Indkøb, to-do, kalender og økonomi for husstanden.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

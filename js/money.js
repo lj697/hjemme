@@ -1150,5 +1150,15 @@ const HjemmeMoney = (() => {
       .replace(/"/g, "&quot;");
   }
 
-  return { attach, enter, render, bind, suggestAllocations };
+  function handleBrowserBack(state) {
+    const money = moneyOf(state);
+    if (view !== "overview" && isReady(money)) {
+      view = "overview";
+      statsBucketId = null;
+      return "stay";
+    }
+    return "leave";
+  }
+
+  return { attach, enter, render, bind, handleBrowserBack, suggestAllocations };
 })();
