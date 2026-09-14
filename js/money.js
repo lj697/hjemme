@@ -443,7 +443,7 @@ const HjemmeMoney = (() => {
         const key = bucket.id;
         const monthBudget = allocations[key] || 0;
         const weekBudget = weeklyOf(monthBudget);
-        const weekUsed = thisMonth && fill ? Number(fill[key] || 0) : monthSpent(money, period, key);
+        const weekUsed = fill ? Number(fill[key] || 0) : 0;
         const monthUsed = monthSpent(money, period, key);
         const weekNote = thisMonth && fill ? String(fill.notes?.[key] || "").trim() : "";
         return `
