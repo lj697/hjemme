@@ -263,6 +263,36 @@ const HjemmeMoney = (() => {
     });
   }
 
+  function weekParts(money, period, fill) {
+    const live = currentPeriod();
+    const plan = planForView(money, period, live);
+    return spendBuckets(bucketsOf(plan)).map((bucket) => ({
+      id: bucket.id,
+      label: bucket.label,
+      used: fill ? Number(fill[bucket.id] || 0) : 0,
+      budget: weeklyOf(planAlloc(money, period, bucket.id)),
+      note: String(fill?.notes?.[bucket.id] || "").trim()
+    }));
+  }
+
+  function weekHistoryAll(money, months = statsMonths) {
+    const live = currentPeriod();
+    return weeksBetween(startOfRange(live, months), live).map((period) => {
+      const fill = fillFor(money, period);
+      const parts = weekParts(money, period, fill);
+      const used = parts.reduce((sum, row) => sum + row.used, 0);
+      const budget = parts.reduce((sum, row) => sum + row.budget, 0);
+      return {
+        ...period,
+        filled: Boolean(fill),
+        used,
+        budget,
+        parts,
+        title: `${weekLabel(period.year, period.month, period.week)}: ${fill ? kr(used) : "ikke udfyldt"}`
+      };
+    });
+  }
+
   function monthHistory(money, key, months = statsMonths) {
     const live = currentPeriod();
     const start = startOfRange(live, months);
@@ -461,6 +491,24 @@ const HjemmeMoney = (() => {
         </button>`;
       })
       .join("");
+    const allWeekUsed = spend.reduce((sum, bucket) => sum + (fill ? Number(fill[bucket.id] || 0) : 0), 0);
+    const allWeekBudget = spend.reduce((sum, bucket) => sum + weeklyOf(allocations[bucket.id] || 0), 0);
+    const allMonthUsed = spend.reduce((sum, bucket) => sum + monthSpent(money, period, bucket.id), 0);
+    const allMonthBudget = spend.reduce((sum, bucket) => sum + (allocations[bucket.id] || 0), 0);
+    const allCard = spend.length
+      ? `
+        <button type="button" class="pot-card pot-card-all" data-pot-stats="all">
+          <p class="eyebrow">Alle puljer</p>
+          ${
+            thisMonth
+              ? `<p class="pot-line">uge ${kr(allWeekUsed)} / ${kr(allWeekBudget)}</p>
+          ${bar(allWeekUsed, allWeekBudget)}`
+              : ""
+          }
+          <p class="hint">måned ${kr(allMonthUsed)} / ${kr(allMonthBudget)}</p>
+          ${bar(allMonthUsed, allMonthBudget)}
+        </button>`
+      : "";
     const leftover = spend.reduce(
       (sum, bucket) => sum + Math.max(0, (allocations[bucket.id] || 0) - monthSpent(money, period, bucket.id)),
       0
@@ -505,7 +553,7 @@ const HjemmeMoney = (() => {
                 .join("")}</div>`
             : ""
         }
-        ${spendCards || `<p class="hint">Ingen ugepuljer endnu. Fjern Fast på en pulje, eller tilføj en ny.</p>`}
+        ${allCard}${spendCards || `<p class="hint">Ingen ugepuljer endnu. Fjern Fast på en pulje, eller tilføj en ny.</p>`}
         <div>
           <p class="eyebrow">Ugerne</p>
           <div class="money-weeks">${weeks}</div>
@@ -757,7 +805,90 @@ const HjemmeMoney = (() => {
       </div>`;
   }
 
+  function renderStatWeekRow(row) {
+    const parts = Array.isArray(row.parts) ? row.parts : [];
+    const notes = parts.filter((part) => part.note);
+    const noteHtml = notes.length
+      ? notes.map((part) => `<p class="pot-stat-note">${escape(part.label)}: ${escape(part.note)}</p>`).join("")
+      : row.note
+        ? `<p class="pot-stat-note">${escape(row.note)}</p>`
+        : "";
+    return `
+      <li>
+        <button type="button" class="pot-stat-week" data-pot-week="${row.year}-${row.month}-${row.week}">
+          <span class="pot-stat-week-top">
+            <span>
+              <strong>${escape(weekLabel(row.year, row.month, row.week))}</strong>
+              <small class="hint">${row.filled ? diffLine(row.used, row.budget) : "Ikke udfyldt"}</small>
+            </span>
+            <strong>${row.filled ? kr(row.used) : "—"}</strong>
+          </span>
+          ${row.filled ? bar(row.used, row.budget) : ""}
+          ${
+            row.filled && parts.length
+              ? `<p class="pot-stat-parts">${parts.map((part) => `${escape(part.label)} ${kr(part.used)}`).join(" · ")}</p>`
+              : ""
+          }
+          ${noteHtml}
+        </button>
+      </li>`;
+  }
+
+  function renderWeekGroups(weeks) {
+    const groups = [];
+    for (const row of [...weeks].reverse()) {
+      const key = `${row.year}-${row.month}`;
+      let group = groups.find((item) => item.key === key);
+      if (!group) {
+        group = { key, year: row.year, month: row.month, weeks: [] };
+        groups.push(group);
+      }
+      group.weeks.push(row);
+    }
+    return groups
+      .map(
+        (group) => `
+          <div class="pot-stat-month">
+            <p class="eyebrow">${escape(monthTitle(group.year, group.month))} ${group.year}</p>
+            <ul class="pot-stat-weeks">
+              ${group.weeks.map(renderStatWeekRow).join("")}
+            </ul>
+          </div>`
+      )
+      .join("");
+  }
+
+  function renderAllStats(money) {
+    const live = currentPeriod();
+    const weeks = weekHistoryAll(money, statsMonths);
+    const filled = weeks.filter((row) => row.filled);
+    const total = filled.reduce((sum, row) => sum + row.used, 0);
+    const avg = filled.length ? Math.round(total / filled.length) : 0;
+    const weekBudget = weeks.length ? weeks[weeks.length - 1].budget : 0;
+    const rangeLabel = `${statsMonths} måneder`;
+    return `
+      <section class="stack money-view">
+        <div>
+          <p class="eyebrow">Uge for uge</p>
+          <h2>Alle puljer</h2>
+          <p class="hint">Samlet forbrug i de løse puljer. Faste puljer sættes af og er ikke med her.</p>
+        </div>
+        ${renderRangeToggle()}
+        ${renderAvgCard(avg, filled.length, weekBudget, { per: "pr. uge", one: "uge", many: "uger" })}
+        ${weeks.length ? renderChart(weeks, (row) => row.used, avg) : ""}
+        ${weeks.length ? renderChartSwitch() : ""}
+        <p class="hint">${
+          filled.length
+            ? `${kr(total)} brugt på ${filled.length} udfyldte uger i de seneste ${rangeLabel}.`
+            : `Ingen uger udfyldt i de seneste ${rangeLabel}.`
+        }</p>
+        ${renderWeekGroups(weeks)}
+      </section>
+    `;
+  }
+
   function renderStats(money) {
+    if (statsBucketId === "all") return renderAllStats(money);
     const bucket = bucketById(money, statsBucketId);
     if (!bucket) {
       return `
@@ -776,44 +907,6 @@ const HjemmeMoney = (() => {
       const total = filled.reduce((sum, row) => sum + row.used, 0);
       const avg = filled.length ? Math.round(total / filled.length) : 0;
       const weekBudget = weeklyOf(planAlloc(money, live, bucket.id));
-      const groups = [];
-      for (const row of [...weeks].reverse()) {
-        const key = `${row.year}-${row.month}`;
-        let group = groups.find((item) => item.key === key);
-        if (!group) {
-          group = { key, year: row.year, month: row.month, weeks: [] };
-          groups.push(group);
-        }
-        group.weeks.push(row);
-      }
-      const list = groups
-        .map(
-          (group) => `
-          <div class="pot-stat-month">
-            <p class="eyebrow">${escape(monthTitle(group.year, group.month))} ${group.year}</p>
-            <ul class="pot-stat-weeks">
-              ${group.weeks
-                .map(
-                  (row) => `
-                <li>
-                  <button type="button" class="pot-stat-week" data-pot-week="${row.year}-${row.month}-${row.week}">
-                    <span class="pot-stat-week-top">
-                      <span>
-                        <strong>${escape(weekLabel(row.year, row.month, row.week))}</strong>
-                        <small class="hint">${row.filled ? diffLine(row.used, row.budget) : "Ikke udfyldt"}</small>
-                      </span>
-                      <strong>${row.filled ? kr(row.used) : "—"}</strong>
-                    </span>
-                    ${row.filled ? bar(row.used, row.budget) : ""}
-                    ${row.note ? `<p class="pot-stat-note">${escape(row.note)}</p>` : ""}
-                  </button>
-                </li>`
-                )
-                .join("")}
-            </ul>
-          </div>`
-        )
-        .join("");
       return `
         <section class="stack money-view">
           <div>
@@ -829,7 +922,7 @@ const HjemmeMoney = (() => {
               ? `${kr(total)} brugt på ${filled.length} udfyldte uger i de seneste ${rangeLabel}.`
               : `Ingen uger udfyldt i de seneste ${rangeLabel}.`
           }</p>
-          ${list}
+          ${renderWeekGroups(weeks)}
         </section>
       `;
     }
