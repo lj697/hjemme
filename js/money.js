@@ -618,14 +618,14 @@ const HjemmeMoney = (() => {
       .map((bucket) => {
         const amount = amountInFill(fill, bucket.id);
         return `
-        <label class="pot-fill-row">
-          ${escape(bucket.label)}
+        <div class="pot-fill-row">
+          <span>${escape(bucket.label)}</span>
           <small class="hint">uge ${kr(weeklyOf(allocations[bucket.id]))}</small>
           <span class="pot-fill-fields">
-            <input name="${escape(bucket.id)}" inputmode="numeric" value="${amount == null ? "" : amount}" aria-label="Beløb">
-            <input name="note-${escape(bucket.id)}" value="${escape(fill.notes?.[bucket.id] || "")}" placeholder="Kommentar" maxlength="80" aria-label="Kommentar">
+            <input name="${escape(bucket.id)}" type="text" inputmode="decimal" enterkeyhint="next" autocomplete="off" value="${amount == null ? "" : amount}" aria-label="Beløb ${escape(bucket.label)}">
+            <input name="note-${escape(bucket.id)}" value="${escape(fill.notes?.[bucket.id] || "")}" placeholder="Kommentar" maxlength="80" aria-label="Kommentar ${escape(bucket.label)}">
           </span>
-        </label>`;
+        </div>`;
       })
       .join("");
     return `
