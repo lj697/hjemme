@@ -189,6 +189,26 @@ const HjemmeMoney = (() => {
     return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
   }
 
+  function parseOptionalKr(value) {
+    if (!String(value || "").trim()) return null;
+    return parseKr(value);
+  }
+
+  function amountInFill(fill, key) {
+    if (!fill || !Object.prototype.hasOwnProperty.call(fill, key)) return null;
+    const n = Number(fill[key]);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.round(n));
+  }
+
+  function fillHasAmounts(fill) {
+    if (!fill) return false;
+    return Object.keys(fill).some((key) => {
+      if (key === "year" || key === "month" || key === "week" || key === "notes") return false;
+      return amountInFill(fill, key) != null;
+    });
+  }
+
   function weeklyOf(amount) {
     return Math.round(Number(amount || 0) / 4);
   }
@@ -251,14 +271,15 @@ const HjemmeMoney = (() => {
     return weeksBetween(startOfRange(live, months), live).map((period) => {
       const fill = fillFor(money, period);
       const budget = weeklyOf(planAlloc(money, period, key));
-      const used = fill ? Number(fill[key] || 0) : 0;
+      const used = amountInFill(fill, key);
+      const filled = used != null;
       return {
         ...period,
-        filled: Boolean(fill),
-        used,
+        filled,
+        used: used ?? 0,
         budget,
-        note: String(fill?.notes?.[key] || "").trim(),
-        title: `${weekLabel(period.year, period.month, period.week)}: ${fill ? kr(used) : "ikke udfyldt"}`
+        note: filled ? String(fill?.notes?.[key] || "").trim() : "",
+        title: `${weekLabel(period.year, period.month, period.week)}: ${filled ? kr(used) : "ikke udfyldt"}`
       };
     });
   }
@@ -266,13 +287,17 @@ const HjemmeMoney = (() => {
   function weekParts(money, period, fill) {
     const live = currentPeriod();
     const plan = planForView(money, period, live);
-    return spendBuckets(bucketsOf(plan)).map((bucket) => ({
-      id: bucket.id,
-      label: bucket.label,
-      used: fill ? Number(fill[bucket.id] || 0) : 0,
-      budget: weeklyOf(planAlloc(money, period, bucket.id)),
-      note: String(fill?.notes?.[bucket.id] || "").trim()
-    }));
+    return spendBuckets(bucketsOf(plan)).map((bucket) => {
+      const used = amountInFill(fill, bucket.id);
+      return {
+        id: bucket.id,
+        label: bucket.label,
+        filled: used != null,
+        used: used ?? 0,
+        budget: weeklyOf(planAlloc(money, period, bucket.id)),
+        note: used != null ? String(fill?.notes?.[bucket.id] || "").trim() : ""
+      };
+    });
   }
 
   function weekHistoryAll(money, months = statsMonths) {
@@ -280,15 +305,17 @@ const HjemmeMoney = (() => {
     return weeksBetween(startOfRange(live, months), live).map((period) => {
       const fill = fillFor(money, period);
       const parts = weekParts(money, period, fill);
-      const used = parts.reduce((sum, row) => sum + row.used, 0);
-      const budget = parts.reduce((sum, row) => sum + row.budget, 0);
+      const filledParts = parts.filter((row) => row.filled);
+      const used = filledParts.reduce((sum, row) => sum + row.used, 0);
+      const budget = filledParts.reduce((sum, row) => sum + row.budget, 0);
+      const filled = filledParts.length > 0;
       return {
         ...period,
-        filled: Boolean(fill),
+        filled,
         used,
         budget,
-        parts,
-        title: `${weekLabel(period.year, period.month, period.week)}: ${fill ? kr(used) : "ikke udfyldt"}`
+        parts: filledParts,
+        title: `${weekLabel(period.year, period.month, period.week)}: ${filled ? kr(used) : "ikke udfyldt"}`
       };
     });
   }
@@ -473,9 +500,10 @@ const HjemmeMoney = (() => {
         const key = bucket.id;
         const monthBudget = allocations[key] || 0;
         const weekBudget = weeklyOf(monthBudget);
-        const weekUsed = fill ? Number(fill[key] || 0) : 0;
+        const weekUsed = amountInFill(fill, key) ?? 0;
         const monthUsed = monthSpent(money, period, key);
-        const weekNote = thisMonth && fill ? String(fill.notes?.[key] || "").trim() : "";
+        const weekNote =
+          thisMonth && amountInFill(fill, key) != null ? String(fill.notes?.[key] || "").trim() : "";
         return `
         <button type="button" class="pot-card" data-pot-stats="${escape(key)}">
           <p class="eyebrow">${escape(bucket.label)}</p>
@@ -491,7 +519,7 @@ const HjemmeMoney = (() => {
         </button>`;
       })
       .join("");
-    const allWeekUsed = spend.reduce((sum, bucket) => sum + (fill ? Number(fill[bucket.id] || 0) : 0), 0);
+    const allWeekUsed = spend.reduce((sum, bucket) => sum + (amountInFill(fill, bucket.id) ?? 0), 0);
     const allWeekBudget = spend.reduce((sum, bucket) => sum + weeklyOf(allocations[bucket.id] || 0), 0);
     const allMonthUsed = spend.reduce((sum, bucket) => sum + monthSpent(money, period, bucket.id), 0);
     const allMonthBudget = spend.reduce((sum, bucket) => sum + (allocations[bucket.id] || 0), 0);
@@ -513,15 +541,17 @@ const HjemmeMoney = (() => {
       (sum, bucket) => sum + Math.max(0, (allocations[bucket.id] || 0) - monthSpent(money, period, bucket.id)),
       0
     );
-    const currentFill = thisMonth ? fillFor(money, { ...period, week: live.week }) : null;
+    const liveFill = thisMonth ? fillFor(money, { ...period, week: live.week }) : null;
+    const currentFill = fillHasAmounts(liveFill) ? liveFill : null;
     const weeks = [1, 2, 3, 4]
       .map((week) => {
         const row = fillFor(money, { ...period, week });
         const today = thisMonth && week === live.week;
+        const filled = fillHasAmounts(row);
         return `
-          <button type="button" class="money-week ${today ? "today" : ""} ${row ? "filled" : ""}" data-money-week="${week}" ${spend.length ? "" : "disabled"}>
+          <button type="button" class="money-week ${today ? "today" : ""} ${filled ? "filled" : ""}" data-money-week="${week}" ${spend.length ? "" : "disabled"}>
             <strong>${weekLabel(period.year, period.month, week)}</strong>
-            <span>${row ? "Udfyldt" : today ? "I gang" : "Ikke udfyldt"}</span>
+            <span>${filled ? "Udfyldt" : today ? "I gang" : "Ikke udfyldt"}</span>
           </button>`;
       })
       .join("");
@@ -585,23 +615,24 @@ const HjemmeMoney = (() => {
     const allocations = plan?.allocations || money.allocations;
     const fill = fillFor(money, period) || {};
     const fields = buckets
-      .map(
-        (bucket) => `
+      .map((bucket) => {
+        const amount = amountInFill(fill, bucket.id);
+        return `
         <label class="pot-fill-row">
           ${escape(bucket.label)}
           <small class="hint">uge ${kr(weeklyOf(allocations[bucket.id]))}</small>
           <span class="pot-fill-fields">
-            <input name="${escape(bucket.id)}" inputmode="numeric" value="${fill[bucket.id] ?? ""}" placeholder="0" aria-label="Beløb">
+            <input name="${escape(bucket.id)}" inputmode="numeric" value="${amount == null ? "" : amount}" aria-label="Beløb">
             <input name="note-${escape(bucket.id)}" value="${escape(fill.notes?.[bucket.id] || "")}" placeholder="Kommentar" maxlength="80" aria-label="Kommentar">
           </span>
-        </label>`
-      )
+        </label>`;
+      })
       .join("");
     return `
       <section class="stack money-view">
         <div>
           <h2>${weekLabel(period.year, period.month, period.week)}</h2>
-          <p class="hint">${fields ? "Hvad kom i puljerne? Et samlet tal for ugen er nok." : "Der er ingen ugepuljer i denne måned."}</p>
+          <p class="hint">${fields ? "Hvad kom i puljerne? Tomt felt tæller ikke med. Skriv 0, hvis I brugte 0 kr." : "Der er ingen ugepuljer i denne måned."}</p>
         </div>
         <form class="form" id="money-fill-form">
           ${fields || `<p class="hint">Fjern Fast på en pulje under Redigér, så I kan udfylde den hver uge.</p>`}
@@ -618,7 +649,7 @@ const HjemmeMoney = (() => {
     const spend = spendBuckets(bucketsOf(plan));
     const allocations = plan?.allocations || money.allocations;
     const fill = fillFor(money, period);
-    if (!fill) {
+    if (!fillHasAmounts(fill)) {
       return `
         <section class="stack money-view">
           <p class="hint">Ugen er ikke udfyldt endnu.</p>
@@ -633,7 +664,14 @@ const HjemmeMoney = (() => {
     );
     const lines = spend
       .map((bucket) => {
-        const used = Number(fill[bucket.id] || 0);
+        const used = amountInFill(fill, bucket.id);
+        if (used == null) {
+          return `
+        <li class="pot-result">
+          <strong>${escape(bucket.label)}</strong>
+          <span>Ikke udfyldt</span>
+        </li>`;
+        }
         const budget = weeklyOf(allocations[bucket.id]);
         const kind = tone(used, budget);
         const extra = kind === "ok" ? " · luft" : "";
@@ -1167,15 +1205,21 @@ const HjemmeMoney = (() => {
       };
       const notes = {};
       spendBuckets(bucketsOf(planForView(money, period, currentPeriod()))).forEach((bucket) => {
-        next[bucket.id] = parseKr(data.get(bucket.id));
+        const amount = parseOptionalKr(data.get(bucket.id));
+        if (amount == null) return;
+        next[bucket.id] = amount;
         const note = String(data.get(`note-${bucket.id}`) || "").trim().slice(0, 80);
         if (note) notes[bucket.id] = note;
       });
       next.notes = notes;
       const existing = fillFor(money, period);
-      if (existing) {
+      if (!fillHasAmounts(next)) {
+        if (existing) money.fills = (money.fills || []).filter((row) => row !== existing);
+      } else if (existing) {
+        Object.keys(existing).forEach((key) => {
+          if (key !== "year" && key !== "month" && key !== "week") delete existing[key];
+        });
         Object.assign(existing, next);
-        existing.notes = notes;
       } else money.fills.push(next);
       persistCurrentMonth(money);
       resultPeriod = { ...period };

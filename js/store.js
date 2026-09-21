@@ -230,7 +230,10 @@ function normalizeMoney(raw) {
           };
           Object.keys(row).forEach((key) => {
             if (key === "year" || key === "month" || key === "week" || key === "notes") return;
-            next[key] = Math.max(0, Math.round(Number(row[key]) || 0));
+            if (row[key] === "" || row[key] == null) return;
+            const n = Number(row[key]);
+            if (!Number.isFinite(n)) return;
+            next[key] = Math.max(0, Math.round(n));
           });
           next.notes = cloneFillNotes(row.notes);
           return next;
